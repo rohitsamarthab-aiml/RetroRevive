@@ -134,6 +134,38 @@ def run_visual_verification() -> bool:
     print(f"Captured: {game_over_path}")
 
     # -------------------------------------------------------------------------
+    # 3b. Cinematic Cutscenes (Prologue, Harvest, Plague)
+    # -------------------------------------------------------------------------
+    app.current_screen = "MAIN_MENU"
+    app.cinematics.trigger_prologue()
+    app.update(1.2)
+    app.draw()
+    prologue_path = "docs/screenshots/screenshot_cinematic_prologue.png"
+    pygame.image.save(app.canvas, prologue_path)
+    print(f"Captured: {prologue_path}")
+    app.cinematics.skip()
+
+    # Harvest Cinematic
+    app.current_screen = "GAMEPLAY"
+    app.cinematics.trigger_harvest(yield_per_acre=5, total_harvest=2500)
+    app.update(1.5)
+    app.draw()
+    harvest_path = "docs/screenshots/screenshot_cinematic_harvest.png"
+    pygame.image.save(app.canvas, harvest_path)
+    print(f"Captured: {harvest_path}")
+    app.cinematics.skip()
+
+    # Plague Event Cinematic
+    app.current_screen = "GAMEPLAY"
+    app.cinematics.trigger_plague(deaths=50, survivors=50)
+    app.update(1.5)
+    app.draw()
+    plague_path = "docs/screenshots/screenshot_cinematic_plague.png"
+    pygame.image.save(app.canvas, plague_path)
+    print(f"Captured: {plague_path}")
+    app.cinematics.skip()
+
+    # -------------------------------------------------------------------------
     # 4. Multi-Resolution Window Scaling (1366x768 and 1920x1080)
     # -------------------------------------------------------------------------
     for w, h in [(1366, 768), (1920, 1080)]:

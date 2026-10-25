@@ -1,15 +1,17 @@
 """
-ui_world.py - Animated ancient Sumerian kingdom scene renderer for RetroRevive.
+ui_world.py - Monumental Living Babylonian Kingdom Scene Renderer for RetroRevive.
 
-Renders a rich, animated landscape featuring:
-- Time-of-day sky with celestial sun and drifting clouds
-- Distant Zagros mountain silhouettes
-- Grand stepped Ziggurat of Ur with flaming braziers
-- Flowing Euphrates river with animated water waves
-- Agricultural fields reflecting current planted acreage and harvest state
-- Mudbrick granary towers reflecting current stored bushels
-- Animated walking citizens along riverbank pathways
-- Weather & event particles (harvest chaff, scurrying rodents, plague mist)
+Renders an authentic, layered ancient Mesopotamian environment:
+- Celestial sky with golden sun corona, atmospheric haze, and layered volumetric clouds
+- Distant Zagros mountain ridges with atmospheric depth perspective
+- Monumental Babylonian Palace with columned porticos, glazed lapis-blue brick facade,
+  and smoking ceremonial braziers
+- Stepped Ziggurat of Ur / Etemenanki rising with grand staircases and sacred summit flames
+- Flowing Euphrates River with animated wave caustics and trade barges
+- Working agricultural fields with irrigation canals and waving golden wheat
+- Living entities: King on royal overlook, patrolling guards, harvesting farmers,
+  merchants with pack donkeys, and walking citizens
+- Weather & state particles: Fire embers, smoke plumes, harvest chaff, and drought dust
 """
 
 import math
@@ -18,11 +20,12 @@ from typing import List, Optional, Tuple
 import pygame
 
 from game_logic import GameState
+from ui_characters import FarmerWorker, MerchantCart, PalaceGuard, RiverBoat
 from ui_theme import Palette
 
 
 class Cloud:
-    """Drifting cloud sprite."""
+    """Drifting volumetric cloud with soft alpha shading."""
 
     def __init__(self, x: float, y: float, speed: float, width: int, height: int) -> None:
         self.x = x
@@ -33,22 +36,25 @@ class Cloud:
 
     def update(self, dt: float) -> None:
         self.x += self.speed * dt
-        if self.x > 1350:
-            self.x = -self.width - random.randint(20, 100)
-            self.y = random.uniform(30, 140)
+        if self.x > 1380:
+            self.x = -self.width - random.randint(30, 120)
+            self.y = random.uniform(25, 140)
 
     def draw(self, surface: pygame.Surface) -> None:
         cloud_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        col = (255, 245, 230, 130)
-        # 3 overlapping ellipses
-        pygame.draw.ellipse(cloud_surf, col, (0, self.height // 3, self.width // 2, self.height * 2 // 3))
-        pygame.draw.ellipse(cloud_surf, col, (self.width // 4, 0, self.width // 2, self.height))
-        pygame.draw.ellipse(cloud_surf, col, (self.width // 2, self.height // 4, self.width // 2, self.height * 3 // 4))
+        col_main = (255, 248, 235, 140)
+        col_shadow = (220, 205, 190, 80)
+        # Soft lower shadow
+        pygame.draw.ellipse(cloud_surf, col_shadow, (0, self.height // 3, self.width, self.height * 2 // 3))
+        # 3 volumetric billowing circles
+        pygame.draw.circle(cloud_surf, col_main, (self.width // 4, self.height // 2), self.height // 2)
+        pygame.draw.circle(cloud_surf, col_main, (self.width // 2, self.height * 2 // 5), int(self.height * 0.55))
+        pygame.draw.circle(cloud_surf, col_main, (self.width * 3 // 4, self.height // 2), self.height // 2)
         surface.blit(cloud_surf, (int(self.x), int(self.y)))
 
 
 class CitizenWalker:
-    """Animated procedural villager walking back and forth."""
+    """Animated procedural Babylonian citizen walking back and forth."""
 
     def __init__(self, x: float, y: float, speed: float, min_x: float, max_x: float, color: Tuple[int, int, int]) -> None:
         self.x = x
@@ -58,7 +64,7 @@ class CitizenWalker:
         self.max_x = max_x
         self.color = color
         self.facing = 1  # 1 = right, -1 = left
-        self.walk_phase = random.uniform(0, 6.28)
+        self.walk_phase = random.uniform(0.0, 6.28)
 
     def update(self, dt: float) -> None:
         self.x += self.speed * self.facing * dt
@@ -70,52 +76,68 @@ class CitizenWalker:
 
     def draw(self, surface: pygame.Surface) -> None:
         stride = math.sin(self.walk_phase) * 3
-        # Head
-        pygame.draw.circle(surface, (230, 195, 160), (int(self.x), int(self.y) - 14), 4)
-        # Body (robe)
+        bx = int(self.x)
+        by = int(self.y)
+
+        # Shadow
+        pygame.draw.ellipse(surface, (20, 15, 10, 80), (bx - 5, by + 6, 10, 4))
+        # Head & headband
+        pygame.draw.circle(surface, (225, 185, 145), (bx, by - 14), 4)
+        pygame.draw.line(surface, Palette.GOLD_DARK, (bx - 4, by - 16), (bx + 4, by - 16), 1)
+        # Draped Mesopotamian robe
         body_poly = [
-            (int(self.x) - 3, int(self.y) - 10),
-            (int(self.x) + 3, int(self.y) - 10),
-            (int(self.x) + 5, int(self.y) + 2),
-            (int(self.x) - 5, int(self.y) + 2),
+            (bx - 4, by - 10),
+            (bx + 4, by - 10),
+            (bx + 5, by + 3),
+            (bx - 5, by + 3),
         ]
         pygame.draw.polygon(surface, self.color, body_poly)
-        # Legs
-        pygame.draw.line(surface, (160, 120, 80), (int(self.x) - 2, int(self.y) + 2), (int(self.x) - 2 + int(stride), int(self.y) + 8), 2)
-        pygame.draw.line(surface, (160, 120, 80), (int(self.x) + 2, int(self.y) + 2), (int(self.x) + 2 - int(stride), int(self.y) + 8), 2)
+        # Stride legs
+        pygame.draw.line(surface, (150, 115, 80), (bx - 2, by + 3), (bx - 2 + int(stride), by + 8), 2)
+        pygame.draw.line(surface, (150, 115, 80), (bx + 2, by + 3), (bx + 2 - int(stride), by + 8), 2)
 
 
 class BirdFlock:
-    """Procedural silhouette birds gliding gracefully across the Sumerian sky."""
+    """Procedural silhouette birds circling the summit of the Ziggurat."""
 
     def __init__(self) -> None:
         self.x = -80.0
         self.y = 80.0
-        self.speed = 36.0
-        self.offsets = [(0, 0), (-16, -10), (-32, -18), (-16, 12), (-32, 22)]
+        self.speed = 34.0
+        self.offsets = [(0, 0), (-18, -12), (-36, -20), (-20, 14), (-38, 24), (-52, 6)]
 
     def update(self, dt: float) -> None:
         self.x += self.speed * dt
-        if self.x > 1400:
-            self.x = -120.0
-            self.y = random.uniform(50, 140)
-            self.speed = random.uniform(30.0, 48.0)
+        if self.x > 1420:
+            self.x = -140.0
+            self.y = random.uniform(45, 130)
+            self.speed = random.uniform(30.0, 46.0)
 
     def draw(self, surface: pygame.Surface, time_elapsed: float) -> None:
-        flap = math.sin(time_elapsed * 8.0) * 3
-        col = (48, 38, 30)
+        col = (35, 28, 22)
         for ox, oy in self.offsets:
             bx = int(self.x + ox)
             by = int(self.y + oy)
+            flap = math.sin(time_elapsed * 8.5 + ox * 0.1) * 3
             if 0 <= bx <= 1280 and 0 <= by <= 720:
                 pygame.draw.line(surface, col, (bx, by), (bx - 5, by - int(3 + flap)), 1)
                 pygame.draw.line(surface, col, (bx, by), (bx + 5, by - int(3 + flap)), 1)
 
 
 class Particle:
-    """Cosmetic particle for harvest, rat, or celebration effects."""
+    """Cosmetic particle for fire embers, smoke plumes, harvest dust, or fireworks."""
 
-    def __init__(self, x: float, y: float, vx: float, vy: float, color: Tuple[int, int, int], lifetime: float, size: int = 3) -> None:
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        vx: float,
+        vy: float,
+        color: Tuple[int, int, int],
+        lifetime: float,
+        size: int = 3,
+        gravity: float = 0.0,
+    ) -> None:
         self.x = x
         self.y = y
         self.vx = vx
@@ -124,15 +146,17 @@ class Particle:
         self.lifetime = lifetime
         self.max_life = lifetime
         self.size = size
+        self.gravity = gravity
 
     def update(self, dt: float) -> bool:
         self.x += self.vx * dt
+        self.vy += self.gravity * dt
         self.y += self.vy * dt
         self.lifetime -= dt
         return self.lifetime > 0
 
     def draw(self, surface: pygame.Surface) -> None:
-        alpha = int((self.lifetime / self.max_life) * 255)
+        alpha = int(min(1.0, max(0.0, self.lifetime / self.max_life)) * 255)
         p_surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
         r, g, b = self.color
         pygame.draw.circle(p_surf, (r, g, b, alpha), (self.size, self.size), self.size)
@@ -140,26 +164,46 @@ class Particle:
 
 
 class WorldRenderer:
-    """Manages procedural rendering and animation of the Sumerian kingdom."""
+    """
+    Manages procedural rendering, lighting, and animation of the living Babylonian Empire.
+    """
 
     def __init__(self) -> None:
         self.time_elapsed = 0.0
+
+        # Atmosphere & Clouds
         self.clouds: List[Cloud] = [
-            Cloud(50, 45, 12.0, 120, 40),
-            Cloud(420, 80, 16.0, 150, 45),
-            Cloud(850, 35, 10.0, 110, 35),
-            Cloud(1150, 95, 14.0, 140, 42),
-        ]
-        self.citizens: List[CitizenWalker] = [
-            CitizenWalker(180, 395, 22.0, 120, 360, Palette.LAPIS_BASE),
-            CitizenWalker(260, 405, 18.0, 150, 380, Palette.CLAY_DEEP),
-            CitizenWalker(680, 410, 24.0, 620, 850, Palette.PALM_GREEN),
-            CitizenWalker(750, 400, 20.0, 650, 900, Palette.GOLD_DARK),
-            CitizenWalker(310, 390, 16.0, 200, 420, (140, 60, 60)),
+            Cloud(40, 40, 10.0, 140, 44),
+            Cloud(380, 75, 14.0, 160, 48),
+            Cloud(760, 30, 9.0, 120, 38),
+            Cloud(1100, 85, 13.0, 150, 46),
         ]
         self.birds = BirdFlock()
+
+        # Living Entities
+        self.citizens: List[CitizenWalker] = [
+            CitizenWalker(190, 396, 20.0, 130, 370, Palette.LAPIS_BASE),
+            CitizenWalker(280, 406, 17.0, 160, 390, Palette.CLAY_DEEP),
+            CitizenWalker(670, 412, 22.0, 610, 840, Palette.PALM_GREEN),
+            CitizenWalker(740, 402, 19.0, 640, 890, Palette.GOLD_DARK),
+            CitizenWalker(320, 392, 15.0, 210, 430, (140, 55, 55)),
+        ]
+        self.farmers: List[FarmerWorker] = [
+            FarmerWorker(240, 490, work_rate=1.0),
+            FarmerWorker(520, 520, work_rate=1.1),
+            FarmerWorker(820, 480, work_rate=0.9),
+            FarmerWorker(1040, 510, work_rate=1.2),
+        ]
+        self.guards: List[PalaceGuard] = [
+            PalaceGuard(610, 372, facing=-1),
+            PalaceGuard(695, 372, facing=1),
+        ]
+        self.merchant = MerchantCart(120, 388, speed=16.0)
+        self.river_boat = RiverBoat(450, 412, speed=13.0)
+
         self.particles: List[Particle] = []
 
+        # Sky gradient cache
         self._cached_sky_surf: Optional[pygame.Surface] = None
         self._cached_sky_year: Optional[int] = None
 
@@ -167,23 +211,24 @@ class WorldRenderer:
         if self._cached_sky_surf is not None and self._cached_sky_year == yr:
             return self._cached_sky_surf
 
-        sky = pygame.Surface((1280, 320))
+        sky = pygame.Surface((1280, 340))
+        # Atmospheric golden hour & dawn palette
         if yr <= 5:
             t = (yr - 1) / 4.0
-            top_r = int(35 + (25 - 35) * t)
-            top_g = int(65 + (85 - 65) * t)
-            top_b = int(125 + (165 - 125) * t)
+            top_r = int(30 + (20 - 30) * t)
+            top_g = int(55 + (75 - 55) * t)
+            top_b = int(115 + (155 - 115) * t)
         else:
             t = (yr - 5) / 5.0
-            top_r = int(25 + (75 - 25) * t)
-            top_g = int(85 + (45 - 85) * t)
-            top_b = int(165 + (95 - 165) * t)
+            top_r = int(20 + (85 - 20) * t)
+            top_g = int(75 + (40 - 75) * t)
+            top_b = int(155 + (90 - 155) * t)
 
-        for y in range(0, 320):
-            factor = y / 320.0
-            r = int(top_r + (225 - top_r) * factor)
-            g = int(top_g + (170 - top_g) * factor)
-            b = int(top_b + (95 - top_b) * factor)
+        for y in range(0, 340):
+            factor = y / 340.0
+            r = int(top_r + (245 - top_r) * factor)
+            g = int(top_g + (185 - top_g) * factor)
+            b = int(top_b + (105 - top_b) * factor)
             pygame.draw.line(sky, (r, g, b), (0, y), (1280, y))
 
         self._cached_sky_surf = sky
@@ -191,34 +236,34 @@ class WorldRenderer:
         return sky
 
     def trigger_harvest_particles(self, count: int = 40) -> None:
-        """Spawns golden grain dust over the fields."""
+        """Golden grain chaff sweeping over the cultivated fields."""
         for _ in range(count):
-            px = random.uniform(550, 1200)
-            py = random.uniform(430, 620)
-            vx = random.uniform(-15, 15)
-            vy = random.uniform(-40, -10)
-            self.particles.append(Particle(px, py, vx, vy, Palette.GOLD_LIGHT, random.uniform(0.8, 1.8), size=random.randint(2, 4)))
+            px = random.uniform(200, 1200)
+            py = random.uniform(460, 640)
+            vx = random.uniform(-15, 25)
+            vy = random.uniform(-45, -15)
+            self.particles.append(Particle(px, py, vx, vy, Palette.GOLD_LIGHT, random.uniform(0.9, 1.8), size=random.randint(2, 4)))
 
     def trigger_rat_particles(self, count: int = 30) -> None:
-        """Spawns scurrying rodent particles near the granary silos."""
+        """Scurrying rodents near the granary silos."""
         for _ in range(count):
-            px = random.uniform(380, 520)
-            py = random.uniform(370, 440)
-            vx = random.uniform(-60, 60)
+            px = random.uniform(770, 910)
+            py = random.uniform(365, 435)
+            vx = random.uniform(-55, 55)
             vy = random.uniform(-10, 15)
-            self.particles.append(Particle(px, py, vx, vy, (40, 30, 25), random.uniform(1.0, 2.0), size=3))
+            self.particles.append(Particle(px, py, vx, vy, (45, 32, 25), random.uniform(1.0, 1.9), size=3))
 
     def trigger_victory_fireworks(self, count: int = 60) -> None:
-        """Spawns celebratory golden stars across the temple sky."""
+        """Celebratory royal fireworks over the palace and ziggurat."""
         for _ in range(count):
-            px = random.uniform(200, 1080)
-            py = random.uniform(80, 260)
+            px = random.uniform(150, 1150)
+            py = random.uniform(60, 240)
             angle = random.uniform(0, 6.28)
-            spd = random.uniform(30, 120)
+            spd = random.uniform(40, 130)
             vx = math.cos(angle) * spd
             vy = math.sin(angle) * spd
-            col = random.choice([Palette.GOLD_LIGHT, Palette.LAPIS_LIGHT, Palette.CROP_GREEN, Palette.SAND_LIGHT])
-            self.particles.append(Particle(px, py, vx, vy, col, random.uniform(1.2, 2.5), size=random.randint(2, 5)))
+            col = random.choice([Palette.GOLD_LIGHT, Palette.LAPIS_LIGHT, Palette.CROP_GREEN, Palette.SAND_LIGHT, (255, 120, 60)])
+            self.particles.append(Particle(px, py, vx, vy, col, random.uniform(1.2, 2.4), size=random.randint(2, 5), gravity=20.0))
 
     def update(self, dt: float) -> None:
         self.time_elapsed += dt
@@ -227,223 +272,286 @@ class WorldRenderer:
         self.birds.update(dt)
         for citizen in self.citizens:
             citizen.update(dt)
+        for farmer in self.farmers:
+            farmer.update(dt)
+        for guard in self.guards:
+            guard.update(dt)
+        self.merchant.update(dt)
+        self.river_boat.update(dt)
+
+        # Ambient brazier smoke particles (emit from palace and temple braziers)
+        if random.random() < 0.35:
+            # Palace brazier 1
+            self.particles.append(Particle(615, 335, random.uniform(-4, 4), random.uniform(-18, -10), (180, 170, 160), 1.5, size=random.randint(2, 4)))
+            # Palace brazier 2
+            self.particles.append(Particle(690, 335, random.uniform(-4, 4), random.uniform(-18, -10), (180, 170, 160), 1.5, size=random.randint(2, 4)))
+            # Ziggurat summit brazier
+            self.particles.append(Particle(215, 195, random.uniform(-5, 5), random.uniform(-22, -12), (200, 180, 150), 1.8, size=random.randint(2, 4)))
+
         self.particles = [p for p in self.particles if p.update(dt)]
 
     def render(self, surface: pygame.Surface, state: Optional[GameState] = None) -> None:
-        """Draws the complete living kingdom scenery onto surface."""
-        # 0. Solid background clearing
+        """Renders the comprehensive living Mesopotamian environment."""
+        # 1. Base Dark Clearing
         surface.fill(Palette.BG_DARK)
 
-        # 1. Sky Gradient (Reflects reign progression and Mesopotamian atmosphere)
+        # 2. Celestial Sky Gradient
         yr = getattr(state, "year", 1) if state else 1
         sky_surf = self._get_sky_surface(yr)
         surface.blit(sky_surf, (0, 0))
 
-        # 2. Celestial Sun
-        sun_x, sun_y = 960, 95
+        # 3. Radiant Celestial Sun with Multi-layered Corona
+        sun_x, sun_y = 980, 95
         pulse = math.sin(self.time_elapsed * 2.0) * 3
-        # Outer glow ring
-        glow_surf = pygame.Surface((120, 120), pygame.SRCALPHA)
-        pygame.draw.circle(glow_surf, (255, 230, 130, 50), (60, 60), int(45 + pulse))
-        pygame.draw.circle(glow_surf, (255, 240, 160, 90), (60, 60), int(32 + pulse))
-        surface.blit(glow_surf, (sun_x - 60, sun_y - 60))
-        # Sun core
-        pygame.draw.circle(surface, Palette.GOLD_PALE, (sun_x, sun_y), 24)
+        # Corona glows
+        glow_surf = pygame.Surface((150, 150), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, (255, 220, 120, 35), (75, 75), int(60 + pulse))
+        pygame.draw.circle(glow_surf, (255, 235, 145, 65), (75, 75), int(42 + pulse))
+        pygame.draw.circle(glow_surf, (255, 245, 175, 110), (75, 75), int(26 + pulse))
+        surface.blit(glow_surf, (sun_x - 75, sun_y - 75))
+        pygame.draw.circle(surface, Palette.GOLD_PALE, (sun_x, sun_y), 20)
 
-        # 3. Drifting Clouds & Flying Birds
+        # 4. Volumetric Drifting Clouds & Circling Birds
         for cloud in self.clouds:
             cloud.draw(surface)
         self.birds.draw(surface, self.time_elapsed)
 
-        # 4. Zagros Mountains Silhouette (Distance)
-        mountains_poly = [
-            (0, 310),
-            (120, 230),
-            (260, 275),
-            (410, 210),
-            (560, 265),
-            (720, 205),
-            (880, 255),
-            (1050, 195),
-            (1190, 240),
-            (1280, 220),
-            (1280, 340),
-            (0, 340),
-        ]
-        pygame.draw.polygon(surface, (135, 105, 85), mountains_poly)
+        # 5. Distant Zagros Mountains with Atmospheric Haze
+        self._draw_mountains(surface)
 
-        # 5. Midground Desert Dunes & Plain (Solid ground base)
-        dune_poly = [
-            (0, 325),
-            (300, 310),
-            (650, 328),
-            (1000, 312),
-            (1280, 320),
-            (1280, 445),
-            (0, 445),
-        ]
-        pygame.draw.polygon(surface, Palette.SAND_BASE, dune_poly)
-        pygame.draw.rect(surface, Palette.SAND_DARK, (0, 375, 1280, 70))
+        # 6. Ancient Mud-brick City Walls of Babylon
+        self._draw_city_walls(surface)
 
-        # 6. Grand Ziggurat of Ur (Left side: x = 60 to 340)
+        # 7. Grand Stepped Ziggurat of Ur (Left skyline)
         self._draw_ziggurat(surface)
 
-        # 7. Granary Silo Storehouses (Middle: x = 370 to 520)
+        # 8. Monumental Royal Palace of Babylon (Center skyline)
+        self._draw_palace(surface)
+
+        # 9. Granary Silo Storehouses (Right skyline)
         bushels = state.bushels if state else 2800
         self._draw_granary(surface, bushels)
 
-        # 8. Euphrates River (Flowing across middle ground: y = 375 to 445)
+        # 10. The Euphrates River (Flowing through middle ground)
         self._draw_river(surface)
 
-        # 9. Palm Trees along Riverbank
-        self._draw_palm_trees(surface)
+        # 11. River Boat / Trade Barge
+        self.river_boat.draw(surface)
 
-        # 10. Citizens walking
+        # 12. Riverbank Palms & Vegetation
+        self._draw_palms(surface)
+
+        # 13. Merchant Cart & Walking Citizens on Highway
+        self.merchant.draw(surface)
         for citizen in self.citizens:
             citizen.draw(surface)
 
-        # 11. Fertile Farmland & Crops (Foreground: y = 440 to 720)
+        # 14. Palace Sentry Guards
+        for guard in self.guards:
+            guard.draw(surface)
+
+        # 15. Fertile Farmland, Irrigation Canals & Reaping Farmers
         acres = state.acres if state else 1000
         yield_rate = state.harvest_yield if state else 3
         self._draw_farmland(surface, acres, yield_rate)
 
-        # 12. Active Particles
+        # 16. Farmers working in fields
+        for farmer in self.farmers:
+            farmer.draw(surface)
+
+        # 17. Active Particles (Embers, smoke, chaff)
         for particle in self.particles:
             particle.draw(surface)
 
+    def _draw_mountains(self, surface: pygame.Surface) -> None:
+        """Distant Zagros mountain ridges with atmospheric haze."""
+        poly_far = [
+            (0, 310), (130, 220), (280, 265), (430, 200), (590, 255),
+            (750, 195), (920, 245), (1080, 190), (1210, 230), (1280, 210),
+            (1280, 340), (0, 340),
+        ]
+        pygame.draw.polygon(surface, (150, 115, 95), poly_far)
+
+        poly_near = [
+            (0, 325), (180, 260), (350, 290), (520, 245), (690, 280),
+            (860, 235), (1030, 275), (1190, 240), (1280, 265),
+            (1280, 350), (0, 350),
+        ]
+        pygame.draw.polygon(surface, (175, 135, 110), poly_near)
+
+    def _draw_city_walls(self, surface: pygame.Surface) -> None:
+        """Massive mudbrick battlements and fortified towers of ancient Babylon."""
+        wall_y = 350
+        wall_h = 32
+        pygame.draw.rect(surface, Palette.SAND_DARK, (0, wall_y, 1280, wall_h))
+        pygame.draw.rect(surface, Palette.CLAY_DEEP, (0, wall_y, 1280, wall_h), width=2)
+
+        # Crenellations along wall parapet
+        for wx in range(0, 1280, 18):
+            pygame.draw.rect(surface, Palette.SAND_DARK, (wx, wall_y - 6, 10, 6))
+            pygame.draw.rect(surface, Palette.CLAY_DEEP, (wx, wall_y - 6, 10, 6), width=1)
+
     def _draw_ziggurat(self, surface: pygame.Surface) -> None:
-        """Renders the stepped ancient Sumerian mudbrick temple."""
-        base_x = 80
+        """The monumental stepped temple of Ur / Etemenanki."""
+        base_x = 75
         base_y = 380
 
-        # Tier 1 (Lowest terrace)
-        t1_w, t1_h = 240, 50
-        pygame.draw.rect(surface, Palette.SAND_DARK, (base_x, base_y - t1_h, t1_w, t1_h), border_radius=4)
-        pygame.draw.rect(surface, Palette.CLAY_DEEP, (base_x, base_y - t1_h, t1_w, t1_h), width=2, border_radius=4)
+        # Tier 1
+        t1_w, t1_h = 240, 48
+        pygame.draw.rect(surface, Palette.SAND_DARK, (base_x, base_y - t1_h, t1_w, t1_h), border_radius=3)
+        pygame.draw.rect(surface, Palette.CLAY_DEEP, (base_x, base_y - t1_h, t1_w, t1_h), width=2, border_radius=3)
 
-        # Tier 2 (Middle terrace)
-        t2_x = base_x + 35
-        t2_w, t2_h = 170, 45
+        # Tier 2
+        t2_x = base_x + 36
+        t2_w, t2_h = 168, 42
         t2_y = base_y - t1_h - t2_h
         pygame.draw.rect(surface, Palette.SAND_DARK, (t2_x, t2_y, t2_w, t2_h), border_radius=3)
         pygame.draw.rect(surface, Palette.CLAY_DEEP, (t2_x, t2_y, t2_w, t2_h), width=2, border_radius=3)
 
-        # Tier 3 (Upper terrace)
-        t3_x = t2_x + 30
-        t3_w, t3_h = 110, 40
+        # Tier 3
+        t3_x = t2_x + 32
+        t3_w, t3_h = 104, 38
         t3_y = t2_y - t3_h
         pygame.draw.rect(surface, Palette.SAND_DARK, (t3_x, t3_y, t3_w, t3_h), border_radius=2)
         pygame.draw.rect(surface, Palette.CLAY_DEEP, (t3_x, t3_y, t3_w, t3_h), width=2, border_radius=2)
 
-        # Golden High Shrine at top
-        shrine_x = t3_x + 25
+        # Summit Lapis-Lazuli High Sanctum
+        shrine_x = t3_x + 22
         shrine_w, shrine_h = 60, 32
         shrine_y = t3_y - shrine_h
         pygame.draw.rect(surface, Palette.LAPIS_BASE, (shrine_x, shrine_y, shrine_w, shrine_h))
         pygame.draw.rect(surface, Palette.GOLD_LIGHT, (shrine_x, shrine_y, shrine_w, shrine_h), width=2)
-        # Gold roof dome
-        pygame.draw.arc(surface, Palette.GOLD_LIGHT, (shrine_x + 5, shrine_y - 12, shrine_w - 10, 24), 0, 3.14, width=3)
+        # Golden dome
+        pygame.draw.arc(surface, Palette.GOLD_LIGHT, (shrine_x + 6, shrine_y - 12, shrine_w - 12, 24), 0, 3.14, width=3)
 
-        # Central Grand Staircase
+        # Grand Axial Staircase
         stair_x = base_x + 105
         stair_poly = [
             (stair_x + 15, shrine_y + shrine_h),
-            (stair_x - 15, base_y),
-            (stair_x + 45, base_y),
+            (stair_x - 14, base_y),
+            (stair_x + 44, base_y),
             (stair_x + 15, shrine_y + shrine_h),
         ]
         pygame.draw.polygon(surface, Palette.CLAY_DEEP, stair_poly)
-        for sy in range(shrine_y + shrine_h + 10, base_y, 8):
-            w_step = 10 + int((sy - shrine_y) * 0.2)
+        for sy in range(shrine_y + shrine_h + 8, base_y, 7):
+            w_step = 10 + int((sy - shrine_y) * 0.22)
             pygame.draw.line(surface, Palette.SAND_LIGHT, (stair_x + 15 - w_step // 2, sy), (stair_x + 15 + w_step // 2, sy), 2)
 
-        # Animated temple flame braziers on summit
-        flame_flicker = math.sin(self.time_elapsed * 12.0) * 3
-        # Left brazier
-        pygame.draw.circle(surface, (255, 140, 20), (shrine_x - 4, shrine_y + 8), int(5 + flame_flicker))
-        pygame.draw.circle(surface, (255, 230, 60), (shrine_x - 4, shrine_y + 8), 3)
-        # Right brazier
-        pygame.draw.circle(surface, (255, 140, 20), (shrine_x + shrine_w + 4, shrine_y + 8), int(5 - flame_flicker))
-        pygame.draw.circle(surface, (255, 230, 60), (shrine_x + shrine_w + 4, shrine_y + 8), 3)
+        # Summit Braziers
+        flame = math.sin(self.time_elapsed * 12.0) * 3
+        pygame.draw.circle(surface, (255, 140, 20), (shrine_x - 4, shrine_y + 8), int(5 + flame))
+        pygame.draw.circle(surface, (255, 235, 70), (shrine_x - 4, shrine_y + 8), 3)
+        pygame.draw.circle(surface, (255, 140, 20), (shrine_x + shrine_w + 4, shrine_y + 8), int(5 - flame))
+        pygame.draw.circle(surface, (255, 235, 70), (shrine_x + shrine_w + 4, shrine_y + 8), 3)
+
+    def _draw_palace(self, surface: pygame.Surface) -> None:
+        """The monumental royal palace of Babylon with Ishtar Gate portico."""
+        px, py = 580, 380
+        pw, ph = 145, 62
+
+        # Glazed Lapis-Blue Wall Facade (Classic Babylonian Royal Palace)
+        pygame.draw.rect(surface, Palette.LAPIS_BASE, (px, py - ph, pw, ph), border_radius=4)
+        pygame.draw.rect(surface, Palette.GOLD_BASE, (px, py - ph, pw, ph), width=2, border_radius=4)
+
+        # Golden Rosette Frieze across cornice
+        for fx in range(px + 10, px + pw - 10, 16):
+            pygame.draw.circle(surface, Palette.GOLD_LIGHT, (fx, py - ph + 8), 4)
+            pygame.draw.circle(surface, Palette.GOLD_DARK, (fx, py - ph + 8), 2)
+
+        # Royal Grand Arch Gateway
+        gate_w, gate_h = 36, 42
+        gate_x = px + (pw - gate_w) // 2
+        gate_y = py - gate_h
+        pygame.draw.rect(surface, (24, 18, 14), (gate_x, gate_y, gate_w, gate_h), border_top_left_radius=18, border_top_right_radius=18)
+        pygame.draw.rect(surface, Palette.GOLD_LIGHT, (gate_x, gate_y, gate_w, gate_h), width=2, border_top_left_radius=18, border_top_right_radius=18)
+
+        # Palace Portico Columns
+        for cx in [px + 16, px + 38, px + pw - 38, px + pw - 16]:
+            pygame.draw.rect(surface, Palette.SAND_LIGHT, (cx - 4, py - ph + 16, 8, ph - 16))
+            pygame.draw.circle(surface, Palette.GOLD_BASE, (cx, py - ph + 18), 5)
+
+        # Flaming Royal Courtyard Braziers flanking gate
+        flick = math.sin(self.time_elapsed * 10.0) * 2.5
+        pygame.draw.rect(surface, Palette.GOLD_DARK, (gate_x - 14, py - 18, 8, 18))
+        pygame.draw.circle(surface, (255, 140, 20), (gate_x - 10, py - 20), int(5 + flick))
+        pygame.draw.circle(surface, (255, 235, 70), (gate_x - 10, py - 20), 3)
+
+        pygame.draw.rect(surface, Palette.GOLD_DARK, (gate_x + gate_w + 6, py - 18, 8, 18))
+        pygame.draw.circle(surface, (255, 140, 20), (gate_x + gate_w + 10, py - 20), int(5 - flick))
+        pygame.draw.circle(surface, (255, 235, 70), (gate_x + gate_w + 10, py - 20), 3)
 
     def _draw_granary(self, surface: pygame.Surface, bushels: int) -> None:
-        """Renders the mudbrick grain storage silos with fill indicators."""
-        gx, gy = 380, 375
-        silo_w, silo_h = 36, 70
-        spacing = 44
+        """The grand mudbrick royal granaries with dynamic grain level indicators."""
+        gx, gy = 770, 380
+        silo_w, silo_h = 36, 68
+        spacing = 45
 
-        # 3 Silo towers
         for i in range(3):
             sx = gx + i * spacing
             sy = gy - silo_h
-            # Tower base
+            # Cylindrical silo base
             pygame.draw.rect(surface, Palette.CLAY_DEEP, (sx, sy, silo_w, silo_h), border_top_left_radius=8, border_top_right_radius=8)
             pygame.draw.rect(surface, Palette.PANEL_BORDER, (sx, sy, silo_w, silo_h), width=2, border_top_left_radius=8, border_top_right_radius=8)
 
-            # Domed clay cap
+            # Silo clay dome
             pygame.draw.circle(surface, Palette.SAND_DARK, (sx + silo_w // 2, sy), silo_w // 2)
             pygame.draw.circle(surface, Palette.PANEL_BORDER, (sx + silo_w // 2, sy), silo_w // 2, width=1)
 
-            # Silo fill window
+            # Dynamic Grain Level Indicator (Visible through window slot)
             fill_pct = min(1.0, max(0.0, (bushels - i * 1000) / 1000.0))
             if fill_pct > 0.0:
                 filled_h = int((silo_h - 22) * fill_pct)
                 fill_rect = pygame.Rect(sx + 6, gy - 8 - filled_h, silo_w - 12, filled_h)
                 pygame.draw.rect(surface, Palette.GOLD_BASE, fill_rect, border_radius=2)
 
-            # Silo doorway/grate
-            pygame.draw.rect(surface, (20, 16, 12), (sx + 10, gy - 16, silo_w - 20, 14), border_top_left_radius=4, border_top_right_radius=4)
+            # Lower ventilation grate
+            pygame.draw.rect(surface, (20, 15, 12), (sx + 10, gy - 14, silo_w - 20, 12), border_top_left_radius=3, border_top_right_radius=3)
 
     def _draw_river(self, surface: pygame.Surface) -> None:
         """Renders the flowing Euphrates river with sinusoidal wave highlights."""
         river_poly = [
-            (0, 385),
-            (280, 395),
-            (580, 385),
-            (920, 400),
-            (1280, 390),
-            (1280, 440),
-            (950, 448),
-            (620, 435),
-            (320, 445),
-            (0, 435),
+            (0, 390), (280, 400), (580, 390), (920, 405), (1280, 395),
+            (1280, 445), (950, 452), (620, 440), (320, 450), (0, 440),
         ]
         pygame.draw.polygon(surface, Palette.RIVER_BLUE, river_poly)
 
-        # Flowing water wave highlights
-        for i in range(12):
-            rx = (i * 110 + int(self.time_elapsed * 35.0)) % 1280
-            wave_y = 398 + int(math.sin(self.time_elapsed * 3.0 + i) * 6) + (i % 3) * 10
+        # Flowing water caustics
+        for i in range(14):
+            rx = (i * 105 + int(self.time_elapsed * 34.0)) % 1280
+            wave_y = 402 + int(math.sin(self.time_elapsed * 3.0 + i) * 5) + (i % 3) * 10
             pygame.draw.arc(surface, Palette.RIVER_HIGHLIGHT, (rx, wave_y, 45, 12), 0, 3.14, width=2)
 
-    def _draw_palm_trees(self, surface: pygame.Surface) -> None:
-        """Draws palm trees along the riverbank."""
-        palm_locations = [(340, 380), (530, 375), (860, 385), (920, 380)]
-        for tx, ty in palm_locations:
-            # Trunk
-            pygame.draw.arc(surface, (110, 80, 50), (tx - 15, ty - 45, 30, 50), 1.2, 2.5, width=4)
-            # Palm fronds
-            frond_origin = (tx - 2, ty - 42)
+    def _draw_palms(self, surface: pygame.Surface) -> None:
+        """Riverbank date palms with swaying fronds."""
+        palms = [(360, 385), (550, 380), (745, 385), (935, 382)]
+        for tx, ty in palms:
+            # Curved trunk
+            pygame.draw.arc(surface, (110, 80, 50), (tx - 15, ty - 46, 30, 50), 1.2, 2.5, width=4)
+            # Fronds
+            orig = (tx - 2, ty - 44)
             for angle in [-1.2, -0.6, 0.0, 0.6, 1.2]:
-                sway = math.sin(self.time_elapsed * 2.0 + angle) * 4
-                fx = frond_origin[0] + int(math.sin(angle) * 22) + int(sway)
-                fy = frond_origin[1] - int(math.cos(angle) * 14)
-                pygame.draw.line(surface, Palette.PALM_GREEN, frond_origin, (fx, fy), 3)
+                sway = math.sin(self.time_elapsed * 2.2 + angle) * 4
+                fx = orig[0] + int(math.sin(angle) * 22) + int(sway)
+                fy = orig[1] - int(math.cos(angle) * 14)
+                pygame.draw.line(surface, Palette.PALM_GREEN, orig, (fx, fy), 3)
 
     def _draw_farmland(self, surface: pygame.Surface, acres: int, yield_rate: int) -> None:
-        """Renders agricultural plots and golden wheat crops."""
-        # Fertile mud soil base
-        pygame.draw.rect(surface, Palette.FERTILE_EARTH, (0, 440, 1280, 280))
+        """Agricultural plots, irrigation canals, and golden wheat stalks."""
+        # Fertile alluvial mud base
+        pygame.draw.rect(surface, Palette.FERTILE_EARTH, (0, 445, 1280, 275))
 
-        # Rows of cultivated furrows
-        for row_y in range(455, 715, 28):
-            pygame.draw.line(surface, (78, 52, 32), (0, row_y), (1280, row_y), 2)
-            # Wheat stalks waving in the breeze
-            sway = math.sin(self.time_elapsed * 3.5 + row_y) * 4
-            crop_col = Palette.CROP_GOLD if yield_rate >= 3 else Palette.CROP_GREEN
-            stalk_spacing = max(18, 50 - (acres // 60))
-            for x in range(30, 1250, stalk_spacing):
+        # Blue irrigation feeder canals cutting between fields
+        for cx in [220, 580, 940]:
+            pygame.draw.line(surface, (35, 80, 115), (cx, 445), (cx - 40, 720), 4)
+
+        # Cultivated furrow rows with waving wheat
+        sway = math.sin(self.time_elapsed * 3.6) * 4.0
+        crop_col = Palette.CROP_GOLD if yield_rate >= 3 else Palette.CROP_GREEN
+        stalk_spacing = max(16, 52 - (acres // 55))
+
+        for row_y in range(460, 715, 26):
+            pygame.draw.line(surface, (72, 48, 28), (0, row_y), (1280, row_y), 2)
+            for x in range(25, 1260, stalk_spacing):
                 sx = x + int(sway)
-                pygame.draw.line(surface, crop_col, (x, row_y), (sx, row_y - 16), 2)
-                # Wheat ear tip
-                pygame.draw.circle(surface, Palette.GOLD_LIGHT, (sx, row_y - 17), 2)
+                pygame.draw.line(surface, crop_col, (x, row_y), (sx, row_y - 15), 2)
+                pygame.draw.circle(surface, Palette.GOLD_LIGHT, (sx, row_y - 16), 2)

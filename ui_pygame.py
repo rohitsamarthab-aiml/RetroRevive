@@ -40,6 +40,8 @@ from modern_game_logic import (
     save_game_state,
     step_enhanced_year,
 )
+from ui_characters import RoyalAdvisorPortrait, RoyalHammurabi
+from ui_cinematics import CinematicDirector
 from ui_theme import (
     DecreePreviewData,
     FontManager,
@@ -82,7 +84,7 @@ class GameApp:
                 flags |= pygame.FULLSCREEN
             self.window = pygame.display.set_mode((self.screen_width, self.screen_height), flags)
 
-        pygame.display.set_caption("RetroRevive: Hammurabi Reimagined")
+        pygame.display.set_caption("RetroRevive: Hammurabi — The Living Empire")
 
         self.canvas = pygame.Surface((BASE_WIDTH, BASE_HEIGHT))
         self.clock = pygame.time.Clock()
@@ -93,8 +95,11 @@ class GameApp:
         self.sound_enabled = True
         self.animation_speed = 1.0
 
-        # World Scene Renderer
+        # World Scene Renderer & Characters
         self.world = WorldRenderer()
+        self.hammurabi = RoyalHammurabi(scale=1.0)
+        self.advisor_portrait = RoyalAdvisorPortrait()
+        self.cinematics = CinematicDirector()
 
         # Navigation State
         self.current_screen = "MAIN_MENU"  # MAIN_MENU, CLASSIC, ENHANCED, SCENARIOS, INSTRUCTIONS, GAME_OVER
@@ -217,6 +222,8 @@ class GameApp:
                 UIButton((bx, start_y + spacing * 4, 380, btn_h), "SETTINGS & AUDIO", self._open_settings_modal, color_scheme="sand"),
                 UIButton((bx, start_y + spacing * 5, 380, btn_h), quit_label, self.quit, color_scheme="crimson"),
             ]
+
+        self.btn_watch_prologue = UIButton((960, 595, 270, 44), "WATCH ROYAL PROLOGUE", self.cinematics.trigger_prologue, primary=True)
 
     def _on_input_changed(self, _: int) -> None:
         """Updates UI limits dynamically when inputs change without infinite recursion."""
@@ -491,6 +498,10 @@ class GameApp:
 
         self._reset_turn_inputs_for_new_turn()
         self.show_toast(f"Year {new_st.year} has arrived in Sumeria.")
+
+        # Trigger genuine cinematic sequence if animations are enabled
+        if self.animations_enabled:
+            self.cinematics.trigger_turn_events(new_st)
 
     def _handle_game_over(self, state: GameState) -> None:
         delete_save_game()
@@ -843,6 +854,12 @@ class GameApp:
         raw_pos = getattr(event, "pos", pygame.mouse.get_pos())
         canvas_mouse = self._screen_to_canvas(raw_pos)
 
+        # Allow skipping cinematic with any key or mouse click
+        if self.cinematics.is_playing():
+            if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                self.cinematics.skip()
+                return
+
         # Modal event consumption
         if self.active_modal:
             self.active_modal.handle_event(event, canvas_mouse)
@@ -862,6 +879,11 @@ class GameApp:
 
     def _handle_menu_events(self, event: pygame.event.Event, mouse_pos: Tuple[int, int]) -> None:
         if event.type == pygame.KEYDOWN:
+            # Hotkey P triggers the royal prologue cinematic
+            if event.key == pygame.K_p:
+                self.cinematics.trigger_prologue()
+                return
+
             # Numeric keys 1-7 map directly to visible menu options
             key_map = {
                 pygame.K_1: 0, pygame.K_KP1: 0,
@@ -894,6 +916,9 @@ class GameApp:
                 if 0 <= self.selected_menu_idx < len(self.menu_buttons):
                     self.menu_buttons[self.selected_menu_idx].trigger()
                 return
+
+        if hasattr(self, "btn_watch_prologue") and self.btn_watch_prologue.handle_event(event, mouse_pos):
+            return
 
         for btn in self.menu_buttons:
             btn.handle_event(event, mouse_pos)
@@ -1064,6 +1089,12 @@ class GameApp:
     def update(self, dt: float) -> None:
         if self.animations_enabled:
             self.world.update(dt)
+            if hasattr(self, "hammurabi"):
+                self.hammurabi.update(dt)
+            if hasattr(self, "advisor_portrait"):
+                self.advisor_portrait.update(dt)
+        if hasattr(self, "cinematics"):
+            self.cinematics.update(dt)
 
     def draw(self) -> None:
         # Render active screen onto logical 1280x720 canvas
@@ -1089,6 +1120,10 @@ class GameApp:
             else:
                 self.active_toast = None
 
+        # Cinematic Cutscenes Overlay (plays over any screen with letterboxing)
+        if hasattr(self, "cinematics") and self.cinematics.is_playing():
+            self.cinematics.draw(self.canvas)
+
         # Scale virtual canvas to letterboxed viewport
         vp_x, vp_y, vp_w, vp_h = self._compute_viewport()
         if vp_w == BASE_WIDTH and vp_h == BASE_HEIGHT and vp_x == 0 and vp_y == 0:
@@ -1100,25 +1135,62 @@ class GameApp:
         pygame.display.flip()
 
     def _draw_main_menu(self) -> None:
-        # Background world scene
+        # Background living world scene
         self.world.render(self.canvas)
 
-        # Dark overlay on center for menu readability
-        overlay = pygame.Surface((540, 575), pygame.SRCALPHA)
-        overlay.fill((20, 16, 12, 220))
+        # -------------------------------------------------------------
+        # Left Royal Pavilion: King Hammurabi
+        # -------------------------------------------------------------
+        left_w, left_h = 310, 580
+        lx, ly = 30, 85
+        pygame.draw.rect(self.canvas, (20, 16, 12, 230), (lx, ly, left_w, left_h), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (lx, ly, left_w, left_h), width=2, border_radius=12)
+
+        # Hammurabi animated bust with breathing, blinking, and sceptre gleam
+        self.hammurabi.draw_bust(self.canvas, center_x=lx + left_w // 2, center_y=ly + 195, size=210)
+
+        # Royal Plaque underneath the bust
+        plaque_rect = pygame.Rect(lx + 20, ly + 360, left_w - 40, 70)
+        pygame.draw.rect(self.canvas, (32, 24, 16), plaque_rect, border_radius=6)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, plaque_rect, width=1, border_radius=6)
+        k_title = FontManager.header(19).render("KING HAMMURABI", True, Palette.GOLD_PALE)
+        k_sub = FontManager.small(12).render("Sixth King of Babylon", True, Palette.SAND_LIGHT)
+        k_dyn = FontManager.small(11).render("Dynasty of the Amorites (c. 1792 BCE)", True, Palette.TEXT_MUTED)
+        self.canvas.blit(k_title, k_title.get_rect(center=(lx + left_w // 2, ly + 380)))
+        self.canvas.blit(k_sub, k_sub.get_rect(center=(lx + left_w // 2, ly + 402)))
+        self.canvas.blit(k_dyn, k_dyn.get_rect(center=(lx + left_w // 2, ly + 418)))
+
+        # Sceptre and rod inscription
+        ins_lines = [
+            "\"I established law and justice",
+            "in the language of the land,",
+            "and promoted the welfare",
+            "of the people.\"",
+        ]
+        iy = ly + 448
+        for il in ins_lines:
+            i_surf = FontManager.italic(13).render(il, True, Palette.GOLD_LIGHT)
+            self.canvas.blit(i_surf, i_surf.get_rect(center=(lx + left_w // 2, iy)))
+            iy += 20
+
+        # -------------------------------------------------------------
+        # Center Menu Card: Title and Game Modes
+        # -------------------------------------------------------------
+        overlay = pygame.Surface((540, 580), pygame.SRCALPHA)
+        overlay.fill((20, 16, 12, 230))
         ox = (BASE_WIDTH - 540) // 2
-        oy = 90
+        oy = 85
         self.canvas.blit(overlay, (ox, oy))
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (ox, oy, 540, 575), width=2, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (ox, oy, 540, 580), width=2, border_radius=12)
 
         # Game Title & Subtitles
         title_surf = FontManager.title(42).render("RETROREVIVE", True, Palette.GOLD_PALE)
-        sub_surf = FontManager.header(22).render("HAMMURABI REIMAGINED", True, Palette.SAND_LIGHT)
-        track_surf = FontManager.small(13).render("Confluence Buildathon 2026 — Track: Resurrections", True, Palette.TEXT_MUTED)
+        sub_surf = FontManager.header(21).render("HAMMURABI — THE LIVING EMPIRE", True, Palette.SAND_LIGHT)
+        track_surf = FontManager.small(12).render("Ancient Babylonian Strategy Simulation  •  1978 BASIC Core", True, Palette.TEXT_MUTED)
 
         self.canvas.blit(title_surf, title_surf.get_rect(center=(BASE_WIDTH // 2, oy + 36)))
-        self.canvas.blit(sub_surf, sub_surf.get_rect(center=(BASE_WIDTH // 2, oy + 72)))
-        self.canvas.blit(track_surf, track_surf.get_rect(center=(BASE_WIDTH // 2, oy + 98)))
+        self.canvas.blit(sub_surf, sub_surf.get_rect(center=(BASE_WIDTH // 2, oy + 70)))
+        self.canvas.blit(track_surf, track_surf.get_rect(center=(BASE_WIDTH // 2, oy + 94)))
 
         # Menu buttons
         for btn in self.menu_buttons:
@@ -1126,10 +1198,60 @@ class GameApp:
 
         # Bottom divider & shortcut help
         has_save = os.path.exists("retrorevive_save.json")
-        hint_label = "[1-7] Quick Select  |  [↑/↓] Focus  |  [Enter] Confirm" if has_save else "[1-6] Quick Select  |  [↑/↓] Focus  |  [Enter] Confirm"
-        pygame.draw.line(self.canvas, Palette.PANEL_BORDER, (ox + 40, oy + 535), (ox + 500, oy + 535), 1)
+        hint_label = "[1-7] Quick Select  |  [P] Royal Prologue  |  [Enter] Confirm" if has_save else "[1-6] Quick Select  |  [P] Royal Prologue  |  [Enter] Confirm"
+        pygame.draw.line(self.canvas, Palette.PANEL_BORDER, (ox + 40, oy + 540), (ox + 500, oy + 540), 1)
         hint = FontManager.small(12).render(hint_label, True, Palette.TEXT_MUTED)
-        self.canvas.blit(hint, hint.get_rect(center=(BASE_WIDTH // 2, oy + 554)))
+        self.canvas.blit(hint, hint.get_rect(center=(BASE_WIDTH // 2, oy + 558)))
+
+        # -------------------------------------------------------------
+        # Right Diorite Stele: Code of Hammurabi & Prologue Action
+        # -------------------------------------------------------------
+        rx, ry = 940, 85
+        rw, rh = 310, 580
+        pygame.draw.rect(self.canvas, (20, 16, 12, 230), (rx, ry, rw, rh), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (rx, ry, rw, rh), width=2, border_radius=12)
+
+        s_hdr = FontManager.header(18).render("THE ROYAL STELE", True, Palette.GOLD_PALE)
+        s_sub = FontManager.small(11).render("PROCLAMATION OF JUSTICE", True, Palette.TEXT_MUTED)
+        self.canvas.blit(s_hdr, s_hdr.get_rect(center=(rx + rw // 2, ry + 24)))
+        self.canvas.blit(s_sub, s_sub.get_rect(center=(rx + rw // 2, ry + 44)))
+        pygame.draw.line(self.canvas, Palette.GOLD_BASE, (rx + 24, ry + 58), (rx + rw - 24, ry + 58), 1)
+
+        # Cuneiform decorative motif & Pillars of State
+        pillars = [
+            ("GOVERNANCE PILLARS", Palette.GOLD_LIGHT),
+            ("• Sustenance: 20 bu / citizen", Palette.TEXT_BODY),
+            ("• Cultivation: 2 bu / seeded ac", Palette.TEXT_BODY),
+            ("• Labor Capacity: 10 ac / person", Palette.TEXT_BODY),
+            ("• Term: 10 Years of Rule", Palette.TEXT_BODY),
+            ("• Land Market: 17–26 bu / ac", Palette.TEXT_BODY),
+            ("• Famine Limit: < 45% annual", Palette.TEXT_BODY),
+        ]
+        py_cur = ry + 75
+        for p_txt, p_col in pillars:
+            p_s = FontManager.small(13).render(p_txt, True, p_col)
+            self.canvas.blit(p_s, (rx + 24, py_cur))
+            py_cur += 24
+
+        pygame.draw.line(self.canvas, Palette.PANEL_BORDER, (rx + 24, py_cur + 8), (rx + rw - 24, py_cur + 8), 1)
+
+        # Cuneiform quote excerpt
+        quote_lines = [
+            "\"That the strong may not",
+            "oppress the weak, to counsel",
+            "the orphan and widow,",
+            "I wrote these precious words",
+            "upon my stone stele.\"",
+        ]
+        qy = py_cur + 24
+        for ql in quote_lines:
+            qs = FontManager.italic(13).render(ql, True, Palette.SAND_LIGHT)
+            self.canvas.blit(qs, qs.get_rect(center=(rx + rw // 2, qy)))
+            qy += 22
+
+        # Watch Royal Prologue Interactive Button
+        if hasattr(self, "btn_watch_prologue"):
+            self.btn_watch_prologue.draw(self.canvas)
 
     def _draw_gameplay(self) -> None:
         st = self._get_current_game_state()
@@ -1254,6 +1376,97 @@ class GameApp:
             delta_surf = FontManager.small(11).render(delta_str, True, Palette.GOLD_LIGHT)
             self.canvas.blit(delta_surf, (card_x + 16, card_y + card_h - 22))
 
+        # 3b. Grand Vizier's Live Ministerial Council Card (Upper Right Card: 618 to 1252)
+        adv_x, adv_y = 618, 74
+        adv_w, adv_h = 634, 205
+        pygame.draw.rect(self.canvas, (28, 22, 18, 225), (adv_x, adv_y, adv_w, adv_h), border_radius=8)
+        pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, (adv_x, adv_y, adv_w, adv_h), width=2, border_radius=8)
+
+        # Header
+        viz_hdr = FontManager.header(17).render("MINISTERIAL AUDIENCE & STRATEGY", True, Palette.GOLD_PALE)
+        self.canvas.blit(viz_hdr, (adv_x + 16, adv_y + 10))
+
+        # Determine Vizier mood from game state
+        if st.plague_struck or st.starved_this_year > 0 or st.harvest_yield <= 2:
+            adv_mood = "alarmed"
+            mood_label = "CRITICAL SITUATION"
+            mood_col = Palette.CRIMSON
+        elif st.harvest_yield >= 5 or st.immigrants_this_year >= 10:
+            adv_mood = "celebratory"
+            mood_label = "ABUNDANT PROSPERITY"
+            mood_col = Palette.SUCCESS_GREEN
+        else:
+            adv_mood = "normal"
+            mood_label = "ORDER RESTORED"
+            mood_col = Palette.GOLD_BASE
+
+        # Badge on top right of council card
+        m_surf = FontManager.mono(11).render(mood_label, True, Palette.TEXT_TITLE)
+        mw, mh = m_surf.get_width() + 14, 20
+        m_rect = pygame.Rect(adv_x + adv_w - mw - 12, adv_y + 9, mw, mh)
+        pygame.draw.rect(self.canvas, mood_col, m_rect, border_radius=4)
+        self.canvas.blit(m_surf, m_surf.get_rect(center=m_rect.center))
+
+        # Animated Vizier Portrait (Left side of council card)
+        self.advisor_portrait.draw(self.canvas, adv_x + 68, adv_y + 108, size=115, mood=adv_mood)
+        v_title = FontManager.small(11).render("VIZIER BELSHAZZAR", True, Palette.GOLD_LIGHT)
+        self.canvas.blit(v_title, v_title.get_rect(center=(adv_x + 68, adv_y + 172)))
+
+        # Speech & Advice on right side of council card
+        content_x = adv_x + 138
+        content_w = adv_w - 150
+
+        if st.plague_struck:
+            speech = "My Sovereign! A terrifying plague swept our streets. Half of our brethren fell to the dust. We must conserve food and protect survivors."
+        elif st.starved_this_year > 0:
+            speech = f"Sire! {st.starved_this_year} citizens perished from famine! Ensure at least {st.population * 20} bushels are distributed for sustenance."
+        elif st.rats_ate > 0:
+            speech = f"Grain vermin consumed {st.rats_ate} bushels from our silos! We must plant vigorously to replace lost reserves."
+        elif st.harvest_yield == 5:
+            speech = "Praise Shamash and Marduk! The fertile silt has granted a bumper harvest of 5 bushels per acre! The granaries overflow!"
+        elif st.harvest_yield == 1:
+            speech = "The river dropped low and drought scorched our stalks; our yield was only 1 bu/acre. Manage treasury with great vigilance."
+        else:
+            speech = "The Euphrates rises calmly, Sire. The farmers stand ready in the fields, awaiting your royal commands."
+
+        # Word-wrap speech text
+        words = speech.split()
+        s_lines = []
+        cur_s = []
+        f_speech = FontManager.small(13)
+        for w in words:
+            test_line = " ".join(cur_s + [w])
+            if f_speech.size(test_line)[0] > content_w and cur_s:
+                s_lines.append(" ".join(cur_s))
+                cur_s = [w]
+            else:
+                cur_s.append(w)
+        if cur_s:
+            s_lines.append(" ".join(cur_s))
+
+        sy = adv_y + 36
+        for sl in s_lines[:3]:
+            sl_surf = f_speech.render(sl, True, Palette.TEXT_TITLE)
+            self.canvas.blit(sl_surf, (content_x, sy))
+            sy += 18
+
+        # Divider line
+        pygame.draw.line(self.canvas, Palette.PANEL_BORDER, (content_x, sy + 4), (adv_x + adv_w - 16, sy + 4), 1)
+
+        # Strategic Key Metrics
+        sy += 12
+        req_food = st.population * 20
+        max_work = st.population * 10
+        m_lines = [
+            (f"• Sustenance Need: {req_food:,} bu (prevents famine for {st.population} people)", Palette.SUCCESS_GREEN if st.bushels >= req_food else Palette.CRIMSON_LIGHT),
+            (f"• Labor Capacity: {max_work:,} acres (1 worker cultivates up to 10 ac)", Palette.SAND_LIGHT),
+            (f"• Land Valuation: {st.land_price} bu/acre (Historical market range: 17–26 bu)", Palette.GOLD_LIGHT),
+        ]
+        for m_txt, m_c in m_lines:
+            m_s = FontManager.small(12).render(m_txt, True, m_c)
+            self.canvas.blit(m_s, (content_x, sy))
+            sy += 19
+
         # 4. Interactive Turn Decision Panel (Bottom half: y = 428 to 710)
         panel_rect = pygame.Rect(16, 428, 1248, 282)
         pygame.draw.rect(self.canvas, (32, 26, 20, 235), panel_rect, border_radius=10)
@@ -1313,6 +1526,54 @@ class GameApp:
 
         res = self.game_over_result
         tier = res["tier"]
+
+        # -------------------------------------------------------------
+        # Left Royal Hammurabi Card
+        # -------------------------------------------------------------
+        lx, ly = 24, 70
+        lw, lh = 216, 520
+        pygame.draw.rect(self.canvas, (24, 18, 14, 235), (lx, ly, lw, lh), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (lx, ly, lw, lh), width=2, border_radius=12)
+        self.hammurabi.draw_bust(self.canvas, center_x=lx + lw // 2, center_y=ly + 190, size=190)
+
+        # Title under bust
+        if tier == 4:
+            r_title = "GREAT HAMMURABI"
+            r_col = Palette.GOLD_LIGHT
+            r_desc = "Father of Babylon"
+        elif tier == 3:
+            r_title = "JUST GOVERNOR"
+            r_col = Palette.SAND_LIGHT
+            r_desc = "Keeper of the Realm"
+        elif tier == 2:
+            r_title = "HARSH STEWARD"
+            r_col = Palette.AMBER_WARN
+            r_desc = "Troubled Reign"
+        else:
+            r_title = "NERONIAN TYRANT"
+            r_col = Palette.CRIMSON_LIGHT
+            r_desc = "Cast into Ignominy"
+
+        p_rect = pygame.Rect(lx + 12, ly + 340, lw - 24, 60)
+        pygame.draw.rect(self.canvas, (32, 24, 16), p_rect, border_radius=6)
+        pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, p_rect, width=1, border_radius=6)
+        self.canvas.blit(FontManager.header(14).render(r_title, True, r_col), FontManager.header(14).render(r_title, True, r_col).get_rect(center=(lx + lw // 2, ly + 358)))
+        self.canvas.blit(FontManager.small(11).render(r_desc, True, Palette.TEXT_MUTED), FontManager.small(11).render(r_desc, True, Palette.TEXT_MUTED).get_rect(center=(lx + lw // 2, ly + 382)))
+
+        # -------------------------------------------------------------
+        # Right Imperial Vizier Archive Card
+        # -------------------------------------------------------------
+        rx, ry = 1040, 70
+        rw, rh = 216, 520
+        pygame.draw.rect(self.canvas, (24, 18, 14, 235), (rx, ry, rw, rh), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (rx, ry, rw, rh), width=2, border_radius=12)
+        self.advisor_portrait.draw(self.canvas, center_x=rx + rw // 2, center_y=ly + 170, size=130, mood=("celebratory" if tier >= 3 else "alarmed"))
+
+        ap_rect = pygame.Rect(rx + 12, ly + 340, rw - 24, 60)
+        pygame.draw.rect(self.canvas, (32, 24, 16), ap_rect, border_radius=6)
+        pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, ap_rect, width=1, border_radius=6)
+        self.canvas.blit(FontManager.header(14).render("IMPERIAL ARCHIVE", True, Palette.GOLD_PALE), FontManager.header(14).render("IMPERIAL ARCHIVE", True, Palette.GOLD_PALE).get_rect(center=(rx + rw // 2, ly + 358)))
+        self.canvas.blit(FontManager.small(11).render("Judgment Recorded", True, Palette.TEXT_MUTED), FontManager.small(11).render("Judgment Recorded", True, Palette.TEXT_MUTED).get_rect(center=(rx + rw // 2, ly + 382)))
 
         # Banner Title
         if res.get("title"):

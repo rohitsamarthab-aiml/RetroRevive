@@ -128,6 +128,12 @@ class FontManager:
     def mono(cls, size: int = 18) -> pygame.font.Font:
         return cls.get_font(size, bold=True, serif=False)
 
+    @classmethod
+    def italic(cls, size: int = 14) -> pygame.font.Font:
+        f = cls.get_font(size, bold=False, serif=True)
+        f.set_italic(True)
+        return f
+
 
 # ---------------------------------------------------------------------------
 # Procedural Retro Sound Synthesizer
@@ -662,10 +668,10 @@ class UIToast:
         font = FontManager.header(16)
         text_surf = font.render(self.message, True, Palette.TEXT_TITLE)
         toast_w = text_surf.get_width() + 48
-        toast_h = 38
-        # Position below the top HUD in the right-hand sky area clear of cards
-        tx = max(550, 1250 - toast_w)
-        toast_rect = pygame.Rect(tx, 74, toast_w, toast_h)
+        toast_h = 36
+        # Position centered in the panoramic open landscape window (y = 290)
+        tx = (surface.get_width() - toast_w) // 2
+        toast_rect = pygame.Rect(tx, 292, toast_w, toast_h)
 
         is_warn = (
             self.category == "warning"
