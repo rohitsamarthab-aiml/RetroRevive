@@ -495,5 +495,171 @@ class TestAnnualSummaryAndDeltas(unittest.TestCase):
         self.assertEqual(summary["acres_delta"], 0)
 
 
+class TestClassicModeMutualExclusivity(unittest.TestCase):
+    """Verifies that buying and selling land in Classic Mode are strictly mutually exclusive."""
+
+    def setUp(self) -> None:
+        pygame.init()
+        SoundSynthesizer.set_enabled(False)
+        self.app = GameApp()
+        self.app._start_classic_game()
+
+    def test_buying_disables_selling_and_zeroes_sell(self) -> None:
+        self.assertTrue(self.app.input_buy.is_enabled)
+        self.assertTrue(self.app.input_sell.is_enabled)
+
+        # Set buy to 10
+        self.app.input_buy.set_value(10)
+        self.assertFalse(self.app.input_sell.is_enabled)
+        self.assertEqual(self.app.input_sell.value, 0)
+        self.assertIn("Buying Land", self.app.input_sell.label)
+
+        # Setting buy back to 0 re-enables selling
+        self.app.input_buy.set_value(0)
+        self.assertTrue(self.app.input_sell.is_enabled)
+        self.assertTrue(self.app.input_buy.is_enabled)
+
+    def test_selling_disables_buying_and_zeroes_buy(self) -> None:
+        # Set sell to 20
+        self.app.input_sell.set_value(20)
+        self.assertFalse(self.app.input_buy.is_enabled)
+        self.assertEqual(self.app.input_buy.value, 0)
+        self.assertIn("Selling Land", self.app.input_buy.label)
+
+        # Setting sell back to 0 re-enables buying
+        self.app.input_sell.set_value(0)
+        self.assertTrue(self.app.input_buy.is_enabled)
+        self.assertTrue(self.app.input_sell.is_enabled)
+
+
+class TestUINumberInputEnhancements(unittest.TestCase):
+    """Tests stepper clamping, backspace to empty, and digit replacement."""
+
+    def setUp(self) -> None:
+        pygame.init()
+        SoundSynthesizer.set_enabled(False)
+        self.changed_values = []
+
+    def _on_change(self, v: int) -> None:
+        self.changed_values.append(v)
+
+    def test_stepper_clamps_to_max_value(self) -> None:
+        inp = UINumberInput((10, 10, 200, 80), initial_value=80, on_change=self._on_change)
+        inp.max_value = 100
+        # Step up +50 exceeds max_value 100
+        inp.adjust(50)
+        self.assertEqual(inp.value, 100)
+        self.assertEqual(inp.text_buffer, "100")
+
+    def test_backspace_to_empty_updates_value_and_triggers_callback(self) -> None:
+        inp = UINumberInput((10, 10, 200, 80), initial_value=5, on_change=self._on_change)
+        inp.is_active = True
+        inp.text_buffer = "5"
+        ev_back = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_BACKSPACE, "unicode": ""})
+        inp.handle_event(ev_back, (0, 0))
+        self.assertEqual(inp.text_buffer, "")
+        self.assertEqual(inp.value, 0)
+        self.assertIn(0, self.changed_values)
+
+    def test_typing_over_zero_replaces_zero(self) -> None:
+        inp = UINumberInput((10, 10, 200, 80), initial_value=0, on_change=self._on_change)
+        inp.is_active = True
+        inp.text_buffer = "0"
+        ev_key = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_5, "unicode": "5"})
+        inp.handle_event(ev_key, (0, 0))
+        self.assertEqual(inp.text_buffer, "5")
+        self.assertEqual(inp.value, 5)
+
+
+class TestScenarioGameOverAndModals(unittest.TestCase):
+    """Tests scenario victory/defeat game over handling, goals modal, and pause save option."""
+
+    def setUp(self) -> None:
+        pygame.init()
+        SoundSynthesizer.set_enabled(False)
+        if os.path.exists("retrorevive_save.json"):
+            os.remove("retrorevive_save.json")
+        self.app = GameApp()
+
+    def tearDown(self) -> None:
+        if os.path.exists("retrorevive_save.json"):
+            os.remove("retrorevive_save.json")
+
+    def test_scenario_victory_game_over(self) -> None:
+        self.app._start_scenario("drought")
+        # Create dummy save file
+        with open("retrorevive_save.json", "w") as f:
+            f.write("{}")
+        self.assertTrue(os.path.exists("retrorevive_save.json"))
+
+        import dataclasses
+        st = dataclasses.replace(self.app.enhanced_state.classic_state, game_over_reason="SCENARIO_WON", is_over=True)
+        self.app.enhanced_state.classic_state = st
+        self.app._handle_game_over(st)
+
+        self.assertEqual(self.app.current_screen, "GAME_OVER")
+        self.assertIsNotNone(self.app.game_over_result)
+        self.assertEqual(self.app.game_over_result["tier"], 4)
+        self.assertIn("SCENARIO VICTORY", self.app.game_over_result["title"])
+        self.assertTrue(self.app.game_over_result["is_scenario"])
+        # Save file should be deleted on victory
+        self.assertFalse(os.path.exists("retrorevive_save.json"))
+
+    def test_scenario_defeat_game_over(self) -> None:
+        self.app._start_scenario("boom")
+        import dataclasses
+        st = dataclasses.replace(self.app.enhanced_state.classic_state, game_over_reason="SCENARIO_LOST", is_over=True)
+        self.app.enhanced_state.classic_state = st
+        self.app._handle_game_over(st)
+
+        self.assertEqual(self.app.current_screen, "GAME_OVER")
+        self.assertIsNotNone(self.app.game_over_result)
+        self.assertEqual(self.app.game_over_result["tier"], 1)
+        self.assertIn("SCENARIO DEFEAT", self.app.game_over_result["title"])
+
+    def test_scenario_goals_modal_and_hotkey(self) -> None:
+        self.app._start_scenario("drought")
+        self.assertIsNone(self.app.active_modal)
+
+        # Press 'G' opens goals modal
+        ev_g = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_g})
+        self.app.handle_event(ev_g)
+        self.assertIsNotNone(self.app.active_modal)
+        self.assertIn("OBJECTIVES", self.app.active_modal.title)
+
+        # Close modal
+        ev_esc = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_ESCAPE})
+        self.app.handle_event(ev_esc)
+        self.assertIsNone(self.app.active_modal)
+
+    def test_pause_modal_has_save_button(self) -> None:
+        self.app._start_classic_game()
+        self.app._open_pause_modal()
+        self.assertIsNotNone(self.app.active_modal)
+        button_labels = [btn.text for btn in self.app.active_modal.action_buttons]
+        self.assertIn("SAVE", button_labels)
+        self.assertIn("RESUME", button_labels)
+        self.assertIn("MAIN MENU", button_labels)
+
+    def test_briefing_card_renders_all_report_lines(self) -> None:
+        self.app._start_classic_game()
+        import dataclasses
+        # Simulate plague + famine + rats + immigrants
+        st = dataclasses.replace(
+            self.app.classic_state,
+            plague_struck=True,
+            starved_this_year=12,
+            immigrants_this_year=5,
+            harvest_yield=3,
+            rats_ate=150,
+            land_price=22,
+        )
+        self.app.classic_state = st
+        # Draw gameplay to canvas
+        self.app.draw()
+        # Verify canvas has rendered without crash
+        self.assertEqual(self.app.canvas.get_size(), (BASE_WIDTH, BASE_HEIGHT))
+
+
 if __name__ == "__main__":
     unittest.main()

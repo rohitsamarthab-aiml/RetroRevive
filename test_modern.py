@@ -84,6 +84,33 @@ class TestEnhancedScenariosAndAdvisors(unittest.TestCase):
         self.assertIn("VICTORY", final_state.status_message)
 
 
+    def test_advisor_emergency_land_sale_during_famine(self) -> None:
+        # Drought scenario: 100 pop requires 2000 bushels, but kingdom only starts with 1800 bushels
+        state = init_enhanced_game(mode="SCENARIO", scenario_id="drought", rng=MockRNG([0.3]))
+        st = state.classic_state
+        self.assertEqual(st.bushels, 1800)
+        self.assertEqual(st.population, 100)
+        self.assertEqual(st.land_price, 20)  # 17 + int(0.3 * 10) = 20
+
+        advice = get_advisor_advice(st)
+        self.assertIn("emergency grain", advice.vizier.lower())
+        self.assertIn("Sell 10 acres", advice.granary_master)
+        self.assertIn("raise 200 bushels", advice.granary_master)
+        # 200 deficit / 20 bu/acre = 10 acres emergency sale recommended
+        self.assertEqual(advice.recommended_sell, 10)
+        self.assertEqual(advice.recommended_buy, 0)
+
+    def test_advisor_land_bargain_purchase(self) -> None:
+        # Kingdom with surplus grain and cheap land (price 17)
+        state = init_enhanced_game(rng=MockRNG([0.0]))  # price 17
+        import dataclasses
+        st = dataclasses.replace(state.classic_state, bushels=5000)
+        advice = get_advisor_advice(st)
+        self.assertEqual(advice.recommended_sell, 0)
+        self.assertGreater(advice.recommended_buy, 0)
+        self.assertIn("Bargain land opportunity", advice.surveyor)
+
+
 class TestSaveAndResume(unittest.TestCase):
     """Verifies clean JSON serialization and state restoration."""
 
@@ -124,6 +151,15 @@ class TestSaveAndResume(unittest.TestCase):
         res = load_game_state(self.temp_file)
         self.assertIsNone(res)
 
+    def test_delete_save_game(self) -> None:
+        with open(self.temp_file, "w") as f:
+            f.write("{}")
+        self.assertTrue(os.path.exists(self.temp_file))
+        deleted = delete_save_game(self.temp_file)
+        self.assertTrue(deleted)
+        self.assertFalse(os.path.exists(self.temp_file))
+
 
 if __name__ == "__main__":
     unittest.main()
+

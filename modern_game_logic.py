@@ -132,6 +132,8 @@ class AdvisorAdvice:
     recommended_feed: int
     recommended_plant: int
     land_price_rating: str  # "CHEAP", "FAIR", "EXPENSIVE"
+    recommended_buy: int = 0
+    recommended_sell: int = 0
 
 
 @dataclass
@@ -248,25 +250,49 @@ def get_advisor_advice(state: GameState) -> AdvisorAdvice:
         price_rating = "EXPENSIVE"
         surveyor_trade = f"Land trades at a high price of {price} bu/acre! Consider selling surplus land."
 
-    # Recommended food
+    rec_sell = 0
+    rec_buy = 0
+
+    # Recommended food & emergency trade
     if bushels >= exact_feed:
         rec_feed = exact_feed
+        surplus_grain = bushels - exact_feed
         granary_msg = (
             f"Allocate {exact_feed} bushels (20 per person) to completely prevent starvation. "
-            f"You will retain {bushels - exact_feed} bushels for seed and reserve."
+            f"You will retain {surplus_grain} bushels for seed and reserve."
         )
+        if price <= 18 and surplus_grain > (acres // 2) + price:
+            grain_for_investment = surplus_grain - (acres // 2)
+            max_buy = grain_for_investment // price
+            labor_surplus = max(0, (labor_limit - 1) - acres)
+            rec_buy = min(max_buy, labor_surplus if labor_surplus > 0 else 20)
+            if rec_buy > 0:
+                surveyor_trade = f"Bargain land opportunity at {price} bu/acre! Silos permit purchasing {rec_buy} acres."
     else:
-        rec_feed = bushels
         deficit = exact_feed - bushels
-        granary_msg = (
-            f"CRITICAL SHORTAGE: We need {exact_feed} bushels, but have only {bushels}! "
-            f"Famine threatens {deficit // 20} citizens unless we sell land immediately!"
-        )
+        # Recommend emergency land sale to cover food shortage
+        rec_sell = min(math.ceil(deficit / max(1, price)), max(0, acres - 1))
+        raised_grain = rec_sell * price
+        effective_grain = bushels + raised_grain
+        rec_feed = min(exact_feed, effective_grain)
+        remaining_deficit = max(0, exact_feed - effective_grain)
+
+        if remaining_deficit == 0:
+            granary_msg = (
+                f"CRITICAL SHORTAGE: We need {exact_feed} bushels, but have only {bushels}! "
+                f"Emergency Decree: Sell {rec_sell} acres at {price} bu/acre to raise {raised_grain} bushels and feed all {pop} citizens!"
+            )
+        else:
+            granary_msg = (
+                f"CATASTROPHIC FAMINE: We need {exact_feed} bushels, but have only {bushels}! "
+                f"Famine threatens {deficit // 20} citizens unless we sell land immediately!"
+            )
 
     # Recommended planting
-    grain_after_feed = max(0, bushels - rec_feed)
+    grain_after_feed = max(0, (bushels + rec_sell * price - rec_buy * price) - rec_feed)
     max_plant_by_seed = grain_after_feed * 2
-    rec_plant = min(acres, labor_limit - 1, max_plant_by_seed)
+    available_land = acres - rec_sell + rec_buy
+    rec_plant = min(available_land, labor_limit - 1, max_plant_by_seed)
     if rec_plant < 0:
         rec_plant = 0
 
@@ -278,7 +304,11 @@ def get_advisor_advice(state: GameState) -> AdvisorAdvice:
 
     # Vizier overall guidance
     if bushels < exact_feed:
-        vizier_msg = "Sire, our highest priority is emergency grain! Sell acres to feed the people."
+        vizier_msg = (
+            f"Sire, our highest priority is emergency grain! Sell {rec_sell} acres at {price} bu/acre to prevent famine."
+            if rec_sell > 0
+            else "Sire, famine threatens our realm! Allocate all reserves to food."
+        )
     elif state.year == 10:
         vizier_msg = "Final year of your term! Maximize land per capita and maintain zero starvation."
     elif rec_plant < acres * 0.7:
@@ -293,6 +323,8 @@ def get_advisor_advice(state: GameState) -> AdvisorAdvice:
         recommended_feed=rec_feed,
         recommended_plant=rec_plant,
         land_price_rating=price_rating,
+        recommended_buy=rec_buy,
+        recommended_sell=rec_sell,
     )
 
 

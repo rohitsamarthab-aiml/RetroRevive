@@ -395,7 +395,10 @@ class UINumberInput:
             return
         ok, current_val, _ = self.parse_integer()
         base = current_val if ok and current_val is not None else 0
-        new_val = max(0, base + delta)
+        if delta > 0 and self.max_value is not None and self.max_value >= 0:
+            new_val = max(0, min(self.max_value, base + delta))
+        else:
+            new_val = max(0, base + delta)
         self.set_value(new_val)
         SoundSynthesizer.play("coin")
 
@@ -432,18 +435,28 @@ class UINumberInput:
             if event.key == pygame.K_BACKSPACE:
                 self.text_buffer = self.text_buffer[:-1]
                 self.error_message = None
-                ok, val, _ = self.parse_integer()
-                if ok and val is not None:
-                    self.value = val
+                if not self.text_buffer.strip():
+                    self.value = 0
                     if self.on_change:
                         self.on_change(self.value)
+                else:
+                    ok, val, _ = self.parse_integer()
+                    if ok and val is not None:
+                        self.value = val
+                        if self.on_change:
+                            self.on_change(self.value)
             elif event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
                 self.is_active = False
             else:
                 char = event.unicode
                 # Accept digits, minus sign (for testing negative values), decimals, letters (to test validation)
                 if char and len(self.text_buffer) < 14 and (char.isprintable() or char in "-+."):
-                    self.text_buffer += char
+                    if self.text_buffer == "0" and char in "123456789":
+                        self.text_buffer = char
+                    elif self.text_buffer == "0" and char == "-":
+                        self.text_buffer = "-"
+                    else:
+                        self.text_buffer += char
                     self.error_message = None
                     ok, val, _ = self.parse_integer()
                     if ok and val is not None:
@@ -605,12 +618,20 @@ class UIModal:
         title_rect = title_surf.get_rect(center=header_rect.center)
         surface.blit(title_surf, title_rect)
 
-        # Body text lines
-        font_body = FontManager.mono(15) if self.monospace else FontManager.body(16)
-        curr_y = self.rect.y + 72
-        line_height = 24
+        # Body text lines with adaptive line-height to prevent button overlap
+        available_h = (self.rect.bottom - 75) - (self.rect.y + 68)
+        num_lines = max(1, len(self.content_lines))
+        needed_h = num_lines * 24
+        if needed_h > available_h and not self.monospace:
+            line_height = max(18, available_h // num_lines)
+            font_body = FontManager.body(15 if line_height < 22 else 16)
+        else:
+            line_height = 24
+            font_body = FontManager.mono(15) if self.monospace else FontManager.body(16)
+
+        curr_y = self.rect.y + 68
         for line in self.content_lines:
-            if curr_y + line_height > self.rect.bottom - 75:
+            if curr_y + line_height > self.rect.bottom - 65:
                 break  # Don't overlap action buttons
             text_surf = font_body.render(line, True, Palette.TEXT_BODY)
             surface.blit(text_surf, (self.rect.x + 36, curr_y))
@@ -646,7 +667,15 @@ class UIToast:
         tx = max(550, 1250 - toast_w)
         toast_rect = pygame.Rect(tx, 74, toast_w, toast_h)
 
-        if self.category == "warning" or "!" in self.message or "?REDO" in self.message:
+        is_warn = (
+            self.category == "warning"
+            or self.message.startswith("?REDO")
+            or self.message.startswith("HAMURABI:")
+            or "DANGER" in self.message
+            or "CRITICAL" in self.message
+            or "FAMINE" in self.message
+        )
+        if is_warn:
             border_col = Palette.AMBER_WARN
             badge_col = Palette.CRIMSON_LIGHT
             tag = "[!]"
@@ -772,13 +801,19 @@ class UIDecreePreview:
         # 2. Grain Reserve
         grain_col = Palette.SUCCESS_GREEN if preview.grain_balance >= 0 else Palette.CRIMSON_LIGHT
         surface.blit(FontManager.small(13).render("Grain Balance:", True, Palette.TEXT_MUTED), (self.rect.x + 12, py))
-        surface.blit(FontManager.mono(13).render(f"{preview.grain_balance} bu remaining", True, grain_col), (self.rect.x + 126, py))
+        if preview.grain_balance < 0:
+            surface.blit(FontManager.mono(13).render(f"DEFICIT: short {abs(preview.grain_balance)} bu", True, grain_col), (self.rect.x + 126, py))
+        else:
+            surface.blit(FontManager.mono(13).render(f"{preview.grain_balance} bu remaining", True, grain_col), (self.rect.x + 126, py))
         py += lh
 
         # 3. Citizens Fed
         feed_col = Palette.CRIMSON_LIGHT if preview.starving_citizens > 0 else Palette.TEXT_TITLE
         surface.blit(FontManager.small(13).render("Citizens Fed:", True, Palette.TEXT_MUTED), (self.rect.x + 12, py))
-        surface.blit(FontManager.mono(13).render(f"{preview.citizens_fed}/{preview.state.population} fed", True, feed_col), (self.rect.x + 126, py))
+        if preview.starving_citizens > 0:
+            surface.blit(FontManager.mono(13).render(f"{preview.citizens_fed}/{preview.state.population} ({preview.starving_citizens} starve)", True, feed_col), (self.rect.x + 126, py))
+        else:
+            surface.blit(FontManager.mono(13).render(f"{preview.citizens_fed}/{preview.state.population} fed", True, feed_col), (self.rect.x + 126, py))
         py += lh
 
         # 4. Sowing & Labor

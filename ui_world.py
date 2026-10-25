@@ -160,6 +160,36 @@ class WorldRenderer:
         self.birds = BirdFlock()
         self.particles: List[Particle] = []
 
+        self._cached_sky_surf: Optional[pygame.Surface] = None
+        self._cached_sky_year: Optional[int] = None
+
+    def _get_sky_surface(self, yr: int) -> pygame.Surface:
+        if self._cached_sky_surf is not None and self._cached_sky_year == yr:
+            return self._cached_sky_surf
+
+        sky = pygame.Surface((1280, 320))
+        if yr <= 5:
+            t = (yr - 1) / 4.0
+            top_r = int(35 + (25 - 35) * t)
+            top_g = int(65 + (85 - 65) * t)
+            top_b = int(125 + (165 - 125) * t)
+        else:
+            t = (yr - 5) / 5.0
+            top_r = int(25 + (75 - 25) * t)
+            top_g = int(85 + (45 - 85) * t)
+            top_b = int(165 + (95 - 165) * t)
+
+        for y in range(0, 320):
+            factor = y / 320.0
+            r = int(top_r + (225 - top_r) * factor)
+            g = int(top_g + (170 - top_g) * factor)
+            b = int(top_b + (95 - top_b) * factor)
+            pygame.draw.line(sky, (r, g, b), (0, y), (1280, y))
+
+        self._cached_sky_surf = sky
+        self._cached_sky_year = yr
+        return sky
+
     def trigger_harvest_particles(self, count: int = 40) -> None:
         """Spawns golden grain dust over the fields."""
         for _ in range(count):
@@ -206,24 +236,8 @@ class WorldRenderer:
 
         # 1. Sky Gradient (Reflects reign progression and Mesopotamian atmosphere)
         yr = getattr(state, "year", 1) if state else 1
-        # Interpolate sky top color: Year 1 dawn azure -> Year 5 bright azure -> Year 10 royal dusk amber
-        if yr <= 5:
-            t = (yr - 1) / 4.0
-            top_r = int(35 + (25 - 35) * t)
-            top_g = int(65 + (85 - 65) * t)
-            top_b = int(125 + (165 - 125) * t)
-        else:
-            t = (yr - 5) / 5.0
-            top_r = int(25 + (75 - 25) * t)
-            top_g = int(85 + (45 - 85) * t)
-            top_b = int(165 + (95 - 165) * t)
-
-        for y in range(0, 320):
-            factor = y / 320.0
-            r = int(top_r + (225 - top_r) * factor)
-            g = int(top_g + (170 - top_g) * factor)
-            b = int(top_b + (95 - top_b) * factor)
-            pygame.draw.line(surface, (r, g, b), (0, y), (1280, y))
+        sky_surf = self._get_sky_surface(yr)
+        surface.blit(sky_surf, (0, 0))
 
         # 2. Celestial Sun
         sun_x, sun_y = 960, 95

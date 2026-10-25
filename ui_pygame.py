@@ -184,6 +184,7 @@ class GameApp:
         # In-Game Header Buttons (Top-Right)
         self.btn_pause = UIButton((1140, 14, 110, 36), "MENU", self._open_pause_modal, font_size=15)
         self.btn_save = UIButton((1020, 14, 110, 36), "SAVE", self._save_game_action, font_size=15, color_scheme="lapis")
+        self.btn_goals = UIButton((900, 14, 105, 36), "GOALS", self._open_scenario_goals_modal, font_size=15, color_scheme="gold")
 
     def _init_menu_buttons(self) -> None:
         """Creates main menu buttons with robust spacing and save file detection."""
@@ -230,18 +231,37 @@ class GameApp:
             buy = self.input_buy.value
             sell = self.input_sell.value
 
-            # In classic mode, selling is only permitted if buying is 0
+            # In classic mode, buying and selling land in the same year is mutually exclusive
             if self.active_mode == "CLASSIC":
                 if buy > 0:
                     self.input_sell.is_enabled = False
                     self.input_sell.label = "SELL LAND (Buying Land)"
+                    if sell != 0:
+                        self.input_sell.set_value(0)
+                        sell = 0
+                    self.input_buy.is_enabled = True
+                    self.input_buy.label = "BUY LAND"
                     available_grain = max(0, st.bushels - buy * st.land_price)
-                else:
+                elif sell > 0:
+                    self.input_buy.is_enabled = False
+                    self.input_buy.label = "BUY LAND (Selling Land)"
+                    if buy != 0:
+                        self.input_buy.set_value(0)
+                        buy = 0
                     self.input_sell.is_enabled = True
                     self.input_sell.label = "SELL LAND (Acres)"
                     self.input_sell.max_value = max(0, st.acres - 1)
                     available_grain = max(0, st.bushels + sell * st.land_price)
+                else:
+                    self.input_buy.is_enabled = True
+                    self.input_buy.label = "BUY LAND"
+                    self.input_sell.is_enabled = True
+                    self.input_sell.label = "SELL LAND (Acres)"
+                    self.input_sell.max_value = max(0, st.acres - 1)
+                    available_grain = st.bushels
             else:
+                self.input_buy.is_enabled = True
+                self.input_buy.label = "BUY LAND"
                 self.input_sell.is_enabled = True
                 self.input_sell.label = "SELL LAND (Acres)"
                 self.input_sell.max_value = max(0, st.acres)
@@ -473,35 +493,99 @@ class GameApp:
         self.show_toast(f"Year {new_st.year} has arrived in Sumeria.")
 
     def _handle_game_over(self, state: GameState) -> None:
+        delete_save_game()
+
+        is_scenario = (
+            self.active_mode == "ENHANCED"
+            and self.enhanced_state is not None
+            and self.enhanced_state.mode == "SCENARIO"
+        )
+        scen = (
+            SCENARIOS.get(self.enhanced_state.scenario_id)
+            if (is_scenario and self.enhanced_state and self.enhanced_state.scenario_id in SCENARIOS)
+            else None
+        )
+
         if state.game_over_reason == "STEWARD_FIRED":
             self.game_over_result = {
                 "tier": 1,
+                "title": "RULE TERMINATED: STEWARD DISMISSED",
                 "acres_per_person": state.acres / state.population if state.population > 0 else 0.0,
                 "avg_starved_pct": state.starved_pct_avg,
                 "total_starved": state.starved_total,
                 "message": "HAMURABI:  I CANNOT DO WHAT YOU WISH.\nGET YOURSELF ANOTHER STEWARD!!!!!",
                 "state": state,
+                "is_scenario": is_scenario,
+                "scenario": scen,
             }
             SoundSynthesizer.play("warning")
         elif state.game_over_reason == "IMPEACHED":
             self.game_over_result = {
                 "tier": 1,
+                "title": "RULE TERMINATED: IMPEACHMENT",
                 "acres_per_person": state.acres / state.population if state.population > 0 else 0.0,
                 "avg_starved_pct": state.starved_pct_avg,
                 "total_starved": state.starved_total,
-                "message": f"YOU STARVED {state.starved_this_year} PEOPLE IN ONE YEAR!!!\nDUE TO THIS EXTREME MISMANAGEMENT YOU HAVE NOT ONLY\nBEEN IMPEACHED AND THROWN OUT OF OFFICE BUT YOU HAVE\nALSO BEEN DECLARED NATIONAL FINK!!!!",
+                "message": (
+                    f"YOU STARVED {state.starved_this_year} PEOPLE IN ONE YEAR!!!\n"
+                    "DUE TO THIS EXTREME MISMANAGEMENT YOU HAVE NOT ONLY\n"
+                    "BEEN IMPEACHED AND THROWN OUT OF OFFICE BUT YOU HAVE\n"
+                    "ALSO BEEN DECLARED NATIONAL FINK!!!!"
+                ),
                 "state": state,
+                "is_scenario": is_scenario,
+                "scenario": scen,
+            }
+            SoundSynthesizer.play("warning")
+        elif state.game_over_reason == "SCENARIO_WON":
+            scen_title = scen.title if scen else "Scenario"
+            self.game_over_result = {
+                "tier": 4,
+                "title": f"SCENARIO VICTORY: {scen_title.upper()}",
+                "acres_per_person": state.acres / state.population if state.population > 0 else 0.0,
+                "avg_starved_pct": state.starved_pct_avg,
+                "total_starved": state.starved_total,
+                "message": (
+                    self.enhanced_state.status_message
+                    if (self.enhanced_state and self.enhanced_state.status_message)
+                    else f"A MAGNIFICENT TRIUMPH! You achieved all objectives for '{scen_title}'!"
+                ),
+                "state": state,
+                "is_scenario": True,
+                "scenario": scen,
+            }
+            SoundSynthesizer.play("bell")
+            self.world.trigger_victory_fireworks(60)
+        elif state.game_over_reason == "SCENARIO_LOST":
+            scen_title = scen.title if scen else "Scenario"
+            self.game_over_result = {
+                "tier": 1,
+                "title": f"SCENARIO DEFEAT: {scen_title.upper()}",
+                "acres_per_person": state.acres / state.population if state.population > 0 else 0.0,
+                "avg_starved_pct": state.starved_pct_avg,
+                "total_starved": state.starved_total,
+                "message": (
+                    self.enhanced_state.status_message
+                    if (self.enhanced_state and self.enhanced_state.status_message)
+                    else f"Term concluded without achieving all requirements for '{scen_title}'."
+                ),
+                "state": state,
+                "is_scenario": True,
+                "scenario": scen,
             }
             SoundSynthesizer.play("warning")
         else:
             eval_res = evaluate_term(state)
             self.game_over_result = {
                 "tier": eval_res.tier,
+                "title": "TEN-YEAR GOVERNANCE EVALUATION",
                 "acres_per_person": eval_res.acres_per_person,
                 "avg_starved_pct": eval_res.avg_starved_pct,
                 "total_starved": eval_res.total_starved,
                 "message": eval_res.message,
                 "state": state,
+                "is_scenario": False,
+                "scenario": None,
             }
             if eval_res.tier == 4:
                 SoundSynthesizer.play("bell")
@@ -564,8 +648,21 @@ class GameApp:
             f"   \"{advice.surveyor}\"",
             f"   Land Valuation: [{advice.land_price_rating}] at {st.land_price} bu/acre | Recommended Crop: {advice.recommended_plant} acres",
         ]
+        if advice.recommended_sell > 0:
+            lines.append(f"   Emergency Land Sale: Recommend selling {advice.recommended_sell} acres at {st.land_price} bu/ac to fund sustenance.")
+        elif advice.recommended_buy > 0:
+            lines.append(f"   Land Investment: Recommend purchasing {advice.recommended_buy} acres at bargain rate.")
 
         def apply_advice():
+            if advice.recommended_sell > 0:
+                self.input_buy.set_value(0)
+                self.input_sell.set_value(advice.recommended_sell)
+            elif advice.recommended_buy > 0:
+                self.input_sell.set_value(0)
+                self.input_buy.set_value(advice.recommended_buy)
+            else:
+                self.input_buy.set_value(0)
+                self.input_sell.set_value(0)
             self.input_feed.set_value(advice.recommended_feed)
             self.input_plant.set_value(advice.recommended_plant)
             self.active_modal = None
@@ -575,7 +672,7 @@ class GameApp:
             ("APPLY ADVICE", apply_advice),
             ("CLOSE", lambda: setattr(self, "active_modal", None)),
         ]
-        self.active_modal = UIModal("THE ROYAL COUNCIL OF SUMERIA", lines, buttons, width=840, height=500)
+        self.active_modal = UIModal("THE ROYAL COUNCIL OF SUMERIA", lines, buttons, width=860, height=520)
 
     def _open_chronicle_modal(self) -> None:
         if not (self.active_mode == "ENHANCED" and self.enhanced_state):
@@ -586,16 +683,46 @@ class GameApp:
         if not entries:
             lines = ["No historical records yet. Enact decrees to record kingdom history."]
         else:
-            lines = [f"{'YR':<4} {'POP':<7} {'GRAIN':<8} {'LAND':<7} {'HARVEST':<9} {'RATS':<7} {'STARVED':<8}"]
-            lines.append("-" * 64)
-            for e in entries[-8:]:
+            lines = [f"{'YR':<4} {'POP':<6} {'GRAIN':<7} {'LAND':<7} {'HARVEST':<9} {'RATS':<7} {'STARVED':<8} {'EVENTS'}"]
+            lines.append("-" * 72)
+            total_starved = sum(e.starved for e in entries)
+            for e in entries[-9:]:
+                evt = "PLAGUE" if e.plague else ("FAMINE" if e.starved > 0 else "PEACE")
+                trade_str = f"+{e.bought_acres}" if e.bought_acres > 0 else (f"-{e.sold_acres}" if e.sold_acres > 0 else "")
+                land_display = f"{e.acres}{'(' + trade_str + ')' if trade_str else ''}"
                 lines.append(
-                    f"{e.year:<4} {e.population_end:<7} {e.bushels:<8} {e.acres:<7} "
-                    f"+{e.harvested_total:<8} -{e.rats_ate:<6} {e.starved:<8}"
+                    f"{e.year:<4} {e.population_end:<6} {e.bushels:<7} {land_display:<7} "
+                    f"+{e.harvested_total:<8} -{e.rats_ate:<6} {e.starved:<8} {evt}"
                 )
+            lines.append("-" * 72)
+            lines.append(f"Cumulative Chronicle: Total Starved: {total_starved} | Recorded Years: {len(entries)}")
 
         buttons = [("CLOSE", lambda: setattr(self, "active_modal", None))]
-        self.active_modal = UIModal("SUMERIAN ROYAL CHRONICLE", lines, buttons, width=760, height=450, monospace=True)
+        self.active_modal = UIModal("SUMERIAN ROYAL CHRONICLE", lines, buttons, width=820, height=480, monospace=True)
+
+    def _open_scenario_goals_modal(self) -> None:
+        if not (self.active_mode == "ENHANCED" and self.enhanced_state and self.enhanced_state.scenario_id in SCENARIOS):
+            return
+        scen = SCENARIOS[self.enhanced_state.scenario_id]
+        st = self._get_current_game_state()
+        lines = [
+            f"Scenario: {scen.title.upper()} — {scen.subtitle}",
+            "",
+            scen.description,
+            "",
+            "VICTORY CRITERIA:",
+            f"• Target Term: Reach Year {scen.target_year} without impeachment (Current: Year {st.year if st else 1})",
+            f"• Maximum Average Starvation: <{scen.max_avg_starvation_pct:.0f}% (Current: {st.starved_pct_avg:.1f}%)" if st else f"• Maximum Average Starvation: <{scen.max_avg_starvation_pct:.0f}%",
+        ]
+        if scen.min_final_bushels > 0:
+            lines.append(f"• Minimum Final Grain: >={scen.min_final_bushels} bushels (Current: {st.bushels if st else 0})")
+        if scen.min_final_acres > 0:
+            lines.append(f"• Minimum Final Land: >={scen.min_final_acres} acres (Current: {st.acres if st else 0})")
+        if scen.min_final_population > 0:
+            lines.append(f"• Minimum Final Population: >={scen.min_final_population} citizens (Current: {st.population if st else 0})")
+
+        buttons = [("CLOSE", lambda: setattr(self, "active_modal", None))]
+        self.active_modal = UIModal(f"SCENARIO OBJECTIVES: {scen.title.upper()}", lines, buttons, width=820, height=480)
 
     def _open_pause_modal(self) -> None:
         lines = [
@@ -618,9 +745,10 @@ class GameApp:
             ("RESUME", lambda: setattr(self, "active_modal", None)),
             ("SOUND", toggle_sound),
             ("ANIM", toggle_anim),
+            ("SAVE", self._save_game_action),
             ("MAIN MENU", self._return_to_main_menu),
         ]
-        self.active_modal = UIModal("PAUSE & GOVERNANCE", lines, buttons, width=680, height=380)
+        self.active_modal = UIModal("PAUSE & GOVERNANCE", lines, buttons, width=720, height=380)
 
     def _open_settings_modal(self) -> None:
         lines = [
@@ -777,6 +905,15 @@ class GameApp:
         if self.btn_save.handle_event(event, mouse_pos):
             return
 
+        # Scenario Goals button in header
+        if (
+            self.active_mode == "ENHANCED"
+            and self.enhanced_state is not None
+            and self.enhanced_state.mode == "SCENARIO"
+        ):
+            if self.btn_goals.handle_event(event, mouse_pos):
+                return
+
         # Execute & Reset Buttons
         if self.btn_execute_turn.handle_event(event, mouse_pos):
             return
@@ -822,6 +959,14 @@ class GameApp:
                     return
                 elif event.key == pygame.K_c and self.active_mode == "ENHANCED":
                     self._open_chronicle_modal()
+                    return
+                elif (
+                    event.key == pygame.K_g
+                    and self.active_mode == "ENHANCED"
+                    and self.enhanced_state is not None
+                    and self.enhanced_state.mode == "SCENARIO"
+                ):
+                    self._open_scenario_goals_modal()
                     return
                 elif event.key == pygame.K_s:
                     self._save_game_action()
@@ -946,9 +1091,12 @@ class GameApp:
 
         # Scale virtual canvas to letterboxed viewport
         vp_x, vp_y, vp_w, vp_h = self._compute_viewport()
-        scaled_surf = pygame.transform.smoothscale(self.canvas, (vp_w, vp_h))
-        self.window.fill((0, 0, 0))
-        self.window.blit(scaled_surf, (vp_x, vp_y))
+        if vp_w == BASE_WIDTH and vp_h == BASE_HEIGHT and vp_x == 0 and vp_y == 0:
+            self.window.blit(self.canvas, (0, 0))
+        else:
+            scaled_surf = pygame.transform.smoothscale(self.canvas, (vp_w, vp_h))
+            self.window.fill((0, 0, 0))
+            self.window.blit(scaled_surf, (vp_x, vp_y))
         pygame.display.flip()
 
     def _draw_main_menu(self) -> None:
@@ -996,31 +1144,56 @@ class GameApp:
         pygame.draw.rect(self.canvas, Palette.PANEL_BG, hud_rect)
         pygame.draw.line(self.canvas, Palette.GOLD_BASE, (0, 64), (BASE_WIDTH, 64), 2)
 
-        # Mode Badge
-        mode_label = f"[{self.active_mode} MODE]" if self.active_mode == "CLASSIC" else "[ENHANCED MODE]"
-        badge_col = Palette.SAND_LIGHT if self.active_mode == "CLASSIC" else Palette.LAPIS_LIGHT
-        b_surf = FontManager.header(18).render(mode_label, True, badge_col)
+        # Mode Badge & Scenario Status
+        is_scenario = (
+            self.active_mode == "ENHANCED"
+            and self.enhanced_state is not None
+            and self.enhanced_state.mode == "SCENARIO"
+        )
+        scen = (
+            SCENARIOS.get(self.enhanced_state.scenario_id)
+            if (is_scenario and self.enhanced_state and self.enhanced_state.scenario_id in SCENARIOS)
+            else None
+        )
+        if is_scenario and scen:
+            mode_label = f"[{scen.title.upper()}]"
+            badge_col = Palette.GOLD_LIGHT
+            target_yr = scen.target_year
+        elif self.active_mode == "CLASSIC":
+            mode_label = "[CLASSIC MODE]"
+            badge_col = Palette.SAND_LIGHT
+            target_yr = 10
+        else:
+            mode_label = "[ENHANCED MODE]"
+            badge_col = Palette.LAPIS_LIGHT
+            target_yr = 10
+
+        b_surf = FontManager.header(17).render(mode_label, True, badge_col)
         self.canvas.blit(b_surf, (20, 20))
 
         # Year Indicator
-        yr_surf = FontManager.header(22).render(f"YEAR {st.year} OF 10", True, Palette.GOLD_PALE)
-        self.canvas.blit(yr_surf, (200, 18))
+        yr_surf = FontManager.header(21).render(f"YEAR {st.year} OF {target_yr}", True, Palette.GOLD_PALE)
+        yr_x = 20 + b_surf.get_width() + 16
+        self.canvas.blit(yr_surf, (yr_x, 19))
 
         # Quick Stats in HUD
         hud_stat = (
             f"Citizens: {st.population}  |  Land: {st.acres} ac  |  "
             f"Grain: {st.bushels} bu  |  Price: {st.land_price} bu/ac"
         )
-        stat_surf = FontManager.body(18).render(hud_stat, True, Palette.TEXT_BODY)
-        self.canvas.blit(stat_surf, (360, 21))
+        stat_x = yr_x + yr_surf.get_width() + 18
+        stat_surf = FontManager.body(17).render(hud_stat, True, Palette.TEXT_BODY)
+        self.canvas.blit(stat_surf, (stat_x, 21))
 
-        # Pause and Save buttons
+        # In-game buttons (Pause, Save, and Goals if scenario)
         self.btn_pause.draw(self.canvas)
         self.btn_save.draw(self.canvas)
+        if is_scenario:
+            self.btn_goals.draw(self.canvas)
 
         # 3. Annual Report Briefing Card (Upper Floating Card)
-        card_w, card_h = 570, 185
-        card_x, card_y = 28, 76
+        card_w, card_h = 570, 205
+        card_x, card_y = 28, 74
         pygame.draw.rect(self.canvas, (28, 22, 18, 225), (card_x, card_y, card_w, card_h), border_radius=8)
         pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, (card_x, card_y, card_w, card_h), width=2, border_radius=8)
 
@@ -1050,7 +1223,7 @@ class GameApp:
             self.canvas.blit(t_surf, t_surf.get_rect(center=tag_rect.center))
             tag_x -= 6
 
-        # Report lines
+        # Report lines (all displayed cleanly without truncation)
         lines = []
         if st.plague_struck:
             lines.append(("• HORRIBLE PLAGUE STRUCK! Half the living people died.", Palette.CRIMSON_LIGHT))
@@ -1066,10 +1239,11 @@ class GameApp:
         lines.append((f"• Land Market: Trading at {st.land_price} bushels per acre.", Palette.TEXT_MUTED))
 
         curr_y = card_y + 34
-        for text, col in lines[:5]:
+        line_spacing = 19 if len(lines) > 5 else 21
+        for text, col in lines:
             l_surf = FontManager.small(13).render(text, True, col)
             self.canvas.blit(l_surf, (card_x + 16, curr_y))
-            curr_y += 21
+            curr_y += line_spacing
 
         # Summary delta footer if previous turn recorded
         if self.last_turn_summary:
@@ -1141,18 +1315,28 @@ class GameApp:
         tier = res["tier"]
 
         # Banner Title
-        if res["state"].game_over_reason == "STEWARD_FIRED":
+        if res.get("title"):
+            title_text = res["title"]
+        elif res["state"].game_over_reason == "STEWARD_FIRED":
             title_text = "RULE TERMINATED: STEWARD DISMISSED"
         elif res["state"].year == 11 and not res["state"].game_over_reason:
             title_text = "TEN-YEAR GOVERNANCE EVALUATION"
         else:
             title_text = "RULE TERMINATED: IMPEACHMENT"
-        t_surf = FontManager.title(32).render(title_text, True, Palette.GOLD_PALE)
+        t_surf = FontManager.title(30).render(title_text, True, Palette.GOLD_PALE)
         self.canvas.blit(t_surf, t_surf.get_rect(center=(BASE_WIDTH // 2, py + 45)))
 
         # Summary Metrics
         st = res["state"]
-        if st.game_over_reason == "STEWARD_FIRED":
+        if res.get("is_scenario") and res.get("scenario"):
+            scen = res["scenario"]
+            m_lines = [
+                f"Scenario: {scen.title.upper()} ({scen.subtitle})",
+                f"Term Reached: Year {min(st.year, scen.target_year)} of {scen.target_year}  |  Avg Starvation: {res['avg_starved_pct']:.1f}% (Limit: <{scen.max_avg_starvation_pct:.0f}%)",
+                f"Surviving Citizens: {st.population} (Req: >={scen.min_final_population})  |  Grain: {st.bushels} bu (Req: >={scen.min_final_bushels})",
+                f"Territory: {st.acres} ac (Req: >={scen.min_final_acres})  |  Acres per citizen: {res['acres_per_person']:.2f} ac",
+            ]
+        elif st.game_over_reason == "STEWARD_FIRED":
             m_lines = [
                 "Your steward refused your order and abandoned your court.",
                 f"Year of abdication: Year {st.year} of 10.",
@@ -1218,20 +1402,20 @@ class GameApp:
             pygame.draw.rect(self.canvas, Palette.PANEL_BORDER_LIGHT, c_rect, width=2, border_radius=10)
 
             # Card Header
-            title_s = FontManager.header(19).render(scen.title, True, Palette.GOLD_PALE)
-            sub_s = FontManager.small(13).render(scen.subtitle, True, Palette.SAND_LIGHT)
-            self.canvas.blit(title_s, (cx + 14, card_y + 16))
-            self.canvas.blit(sub_s, (cx + 14, card_y + 42))
+            title_s = FontManager.header(17).render(scen.title, True, Palette.GOLD_PALE)
+            sub_s = FontManager.small(12).render(scen.subtitle, True, Palette.SAND_LIGHT)
+            self.canvas.blit(title_s, (cx + 14, card_y + 15))
+            self.canvas.blit(sub_s, (cx + 14, card_y + 40))
 
             # Difficulty Badge
             diff_map = {
                 "drought": ("HARD", Palette.AMBER_WARN),
                 "boom": ("MEDIUM", Palette.LAPIS_LIGHT),
-                "defense": ("HARD", Palette.AMBER_WARN),
+                "granary": ("HARD", Palette.AMBER_WARN),
                 "empire": ("MASTER", Palette.CRIMSON),
             }
             d_text, d_col = diff_map.get(key, ("CHALLENGE", Palette.GOLD_BASE))
-            d_badge = pygame.Rect(cx + card_w - 76, card_y + 16, 62, 22)
+            d_badge = pygame.Rect(cx + card_w - 74, card_y + 15, 60, 22)
             pygame.draw.rect(self.canvas, d_col, d_badge, border_radius=4)
             d_label = FontManager.mono(11).render(d_text, True, Palette.TEXT_TITLE)
             self.canvas.blit(d_label, d_label.get_rect(center=d_badge.center))
@@ -1265,16 +1449,16 @@ class GameApp:
             self.canvas.blit(FontManager.header(15).render("VICTORY GOALS:", True, Palette.GOLD_LIGHT), (cx + 20, obj_y + 10))
 
             goals = [
-                f"✓ Term: Survive {scen.target_year} Years",
-                f"✓ Start Grain: {scen.starting_bushels} bu",
-                f"✓ Starvation Limit: <{scen.max_avg_starvation_pct:.0f}%",
+                f"• Term: Survive {scen.target_year} Years",
+                f"• Start Grain: {scen.starting_bushels} bu",
+                f"• Starve Limit: <{scen.max_avg_starvation_pct:.0f}%",
             ]
             if scen.min_final_bushels > 0:
-                goals.append(f"✓ Final Grain: >={scen.min_final_bushels} bu")
+                goals.append(f"• Final Grain: >={scen.min_final_bushels} bu")
             if scen.min_final_acres > 0:
-                goals.append(f"✓ Final Land: >={scen.min_final_acres} ac")
+                goals.append(f"• Final Land: >={scen.min_final_acres} ac")
             if scen.min_final_population > 0:
-                goals.append(f"✓ Final Pop: >={scen.min_final_population}")
+                goals.append(f"• Final Pop: >={scen.min_final_population}")
 
             gy = obj_y + 36
             for g in goals:
@@ -1284,6 +1468,10 @@ class GameApp:
             # Start Scenario Button (persistent instance)
             if key in self.scenario_play_buttons:
                 self.scenario_play_buttons[key].draw(self.canvas)
+
+        # Bottom navigation hint
+        hint = FontManager.small(12).render("[1-4] Quick Launch  |  [Esc / B] Return to Main Menu", True, Palette.TEXT_MUTED)
+        self.canvas.blit(hint, hint.get_rect(center=(BASE_WIDTH // 2, card_y + card_h + 28)))
 
     def _draw_instructions(self) -> None:
         self.world.render(self.canvas)
