@@ -21,31 +21,39 @@ from game_logic import GameState
 # ---------------------------------------------------------------------------
 
 class Palette:
+    # Deep Midnight Blue & Sapphire Surfaces (Phase 8 Design System)
+    SAPPHIRE_DARK = (10, 16, 28)
+    SAPPHIRE_BASE = (16, 26, 46)
+    SAPPHIRE_LIGHT = (26, 42, 72)
+    SAPPHIRE_GLASS = (12, 20, 36, 220)
+    SAPPHIRE_PANEL = (15, 25, 45, 235)
+
     # Sandstone & Clay
     SAND_LIGHT = (235, 218, 185)
     SAND_BASE = (210, 185, 145)
     SAND_DARK = (165, 135, 95)
     CLAY_DEEP = (120, 85, 55)
 
-    # Dark Stone / Bronze Backgrounds
-    BG_DARK = (24, 20, 18)
-    PANEL_BG = (38, 30, 24)
-    PANEL_BG_LIGHT = (52, 42, 34)
-    PANEL_BORDER = (180, 145, 90)
-    PANEL_BORDER_LIGHT = (215, 180, 115)
+    # Dark Stone / Bronze Backgrounds -> Upgraded to Deep Sapphire Glass
+    BG_DARK = (10, 16, 28)
+    PANEL_BG = (16, 26, 46)
+    PANEL_BG_LIGHT = (26, 40, 68)
+    PANEL_BORDER = (185, 150, 75)
+    PANEL_BORDER_LIGHT = (220, 185, 100)
 
     # Lapis Lazuli & Water
-    LAPIS_DARK = (22, 44, 88)
-    LAPIS_BASE = (36, 72, 144)
-    LAPIS_LIGHT = (64, 115, 210)
-    RIVER_BLUE = (45, 95, 175)
-    RIVER_HIGHLIGHT = (90, 150, 235)
+    LAPIS_DARK = (14, 28, 56)
+    LAPIS_BASE = (24, 48, 96)
+    LAPIS_LIGHT = (48, 95, 185)
+    RIVER_BLUE = (35, 80, 155)
+    RIVER_HIGHLIGHT = (70, 135, 225)
 
-    # Royal Gold & Amber
-    GOLD_DARK = (180, 135, 25)
-    GOLD_BASE = (225, 175, 40)
-    GOLD_LIGHT = (250, 215, 80)
-    GOLD_PALE = (255, 240, 160)
+    # Royal Gold & Amber (Restrained Antique Gold)
+    GOLD_DARK = (165, 125, 25)
+    GOLD_BASE = (212, 175, 55)
+    GOLD_LIGHT = (242, 210, 105)
+    GOLD_PALE = (255, 242, 185)
+    TURQUOISE_ACCENT = (38, 185, 205)
 
     # Agriculture & Nature
     CROP_GREEN = (65, 140, 70)
@@ -63,14 +71,14 @@ class Palette:
     # Text & Overlays
     TEXT_TITLE = (255, 245, 225)
     TEXT_BODY = (235, 225, 210)
-    TEXT_MUTED = (175, 160, 140)
-    TEXT_DARK = (30, 24, 18)
-    OVERLAY_DIM = (12, 10, 8, 190)
+    TEXT_MUTED = (165, 175, 195)
+    TEXT_DARK = (12, 18, 30)
+    OVERLAY_DIM = (8, 12, 22, 205)
 
     # Luxury & Ledger Highlights
-    PARCHMENT_BG = (36, 28, 22)
-    BADGE_BG_DARK = (24, 18, 14)
-    FOCUS_RING = (255, 225, 90)
+    PARCHMENT_BG = (18, 28, 50)
+    BADGE_BG_DARK = (12, 18, 32)
+    FOCUS_RING = (242, 210, 105)
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +284,10 @@ class UIButton:
     def draw(self, surface: pygame.Surface) -> None:
         # Determine colors
         if not self.is_enabled:
-            bg_col = (55, 48, 42)
-            border_col = (85, 75, 65)
+            bg_col = (20, 26, 38)
+            border_col = (42, 52, 70)
             text_col = Palette.TEXT_MUTED
-        elif self.color_scheme == "lapis":
+        elif self.color_scheme == "lapis" or self.color_scheme == "sapphire":
             bg_col = Palette.LAPIS_LIGHT if self.is_hovered else Palette.LAPIS_BASE
             border_col = Palette.GOLD_LIGHT if self.is_hovered else Palette.GOLD_BASE
             text_col = Palette.TEXT_TITLE
@@ -289,17 +297,17 @@ class UIButton:
             text_col = Palette.TEXT_TITLE
         elif self.primary:
             bg_col = Palette.GOLD_LIGHT if self.is_hovered else Palette.GOLD_BASE
-            border_col = Palette.SAND_LIGHT if self.is_hovered else Palette.GOLD_DARK
+            border_col = Palette.GOLD_PALE if self.is_hovered else Palette.GOLD_DARK
             text_col = Palette.TEXT_DARK
         else:
-            bg_col = (68, 54, 42) if self.is_hovered else Palette.PANEL_BG_LIGHT
+            bg_col = Palette.SAPPHIRE_LIGHT if self.is_hovered else Palette.PANEL_BG_LIGHT
             border_col = Palette.GOLD_LIGHT if self.is_hovered else Palette.PANEL_BORDER
             text_col = Palette.TEXT_TITLE if self.is_hovered else Palette.TEXT_BODY
 
         # Shadow
         shadow_rect = self.rect.copy()
         shadow_rect.y += 3
-        pygame.draw.rect(surface, (15, 12, 10, 160), shadow_rect, border_radius=6)
+        pygame.draw.rect(surface, (6, 10, 18, 160), shadow_rect, border_radius=6)
 
         # Base body
         draw_rect = self.rect.copy()
@@ -474,8 +482,8 @@ class UINumberInput:
         return False
 
     def draw(self, surface: pygame.Surface) -> None:
-        # Background panel
-        bg_col = (45, 38, 32) if not self.is_enabled else Palette.PANEL_BG
+        # Background panel (Sapphire glass)
+        bg_col = (18, 26, 40) if not self.is_enabled else Palette.PANEL_BG
         pygame.draw.rect(surface, bg_col, self.rect, border_radius=8)
 
         # Border color reflects active or error state
@@ -499,10 +507,10 @@ class UINumberInput:
 
         # Input box
         input_box = pygame.Rect(self.rect.x + 10, self.rect.y + 28, self.rect.width - 20, 36)
-        box_bg = (20, 16, 12) if self.is_active else (28, 22, 18)
+        box_bg = Palette.SAPPHIRE_DARK if self.is_active else (14, 22, 38)
         pygame.draw.rect(surface, box_bg, input_box, border_radius=5)
 
-        box_border = Palette.CRIMSON_LIGHT if self.error_message else (Palette.GOLD_LIGHT if self.is_active else (80, 65, 50))
+        box_border = Palette.CRIMSON_LIGHT if self.error_message else (Palette.GOLD_LIGHT if self.is_active else (48, 68, 98))
         pygame.draw.rect(surface, box_border, input_box, width=1, border_radius=5)
 
         # Value text: display user's typed buffer whenever editing or invalid, else str(value)
@@ -616,7 +624,7 @@ class UIModal:
 
         # Header bar
         header_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 56)
-        pygame.draw.rect(surface, (50, 38, 28), header_rect, border_top_left_radius=12, border_top_right_radius=12)
+        pygame.draw.rect(surface, Palette.SAPPHIRE_BASE, header_rect, border_top_left_radius=12, border_top_right_radius=12)
         pygame.draw.line(surface, Palette.GOLD_BASE, (self.rect.x, self.rect.y + 56), (self.rect.right, self.rect.y + 56), 2)
 
         # Title text
@@ -694,7 +702,7 @@ class UIToast:
             badge_col = Palette.GOLD_BASE
             tag = "[i]"
 
-        pygame.draw.rect(surface, (28, 22, 18), toast_rect, border_radius=8)
+        pygame.draw.rect(surface, Palette.SAPPHIRE_BASE, toast_rect, border_radius=8)
         pygame.draw.rect(surface, border_col, toast_rect, width=2, border_radius=8)
 
         tag_surf = FontManager.mono(13).render(tag, True, badge_col)
@@ -775,8 +783,8 @@ class UIDecreePreview:
         self.rect = pygame.Rect(rect)
 
     def draw(self, surface: pygame.Surface, preview: DecreePreviewData) -> None:
-        # Ledger Panel Background
-        pygame.draw.rect(surface, (28, 22, 17), self.rect, border_radius=8)
+        # Ledger Panel Background (Sapphire glass)
+        pygame.draw.rect(surface, Palette.SAPPHIRE_PANEL, self.rect, border_radius=8)
         border_col = Palette.GOLD_LIGHT if preview.is_valid else Palette.CRIMSON_LIGHT
         pygame.draw.rect(surface, border_col, self.rect, width=2, border_radius=8)
 

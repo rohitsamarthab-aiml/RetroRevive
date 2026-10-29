@@ -40,8 +40,11 @@ from modern_game_logic import (
     save_game_state,
     step_enhanced_year,
 )
+from auth_manager import AuthManager
+from ui_auth import AuthModal
 from ui_characters import RoyalAdvisorPortrait, RoyalHammurabi
 from ui_cinematics import CinematicDirector
+from ui_districts import DistrictManager
 from ui_theme import (
     DecreePreviewData,
     FontManager,
@@ -68,6 +71,8 @@ class GameApp:
         start_fullscreen: bool = False,
         on_exit_to_library: Optional[Callable[[], None]] = None,
         shared_window: Optional[pygame.Surface] = None,
+        auth: Optional[AuthManager] = None,
+        show_auth_modal: bool = False,
     ) -> None:
         pygame.init()
         SoundSynthesizer.init()
@@ -100,6 +105,16 @@ class GameApp:
         self.hammurabi = RoyalHammurabi(scale=1.0)
         self.advisor_portrait = RoyalAdvisorPortrait()
         self.cinematics = CinematicDirector()
+
+        # Authentication & Profile Manager
+        self.auth = auth or AuthManager()
+        self.auth_modal: Optional[AuthModal] = None
+        if show_auth_modal:
+            self._open_profile_modal()
+
+        # Kingdom Districts & Camera Manager
+        self.districts = DistrictManager()
+        self.is_command_deck_collapsed = False
 
         # Navigation State
         self.current_screen = "MAIN_MENU"  # MAIN_MENU, CLASSIC, ENHANCED, SCENARIOS, INSTRUCTIONS, GAME_OVER
@@ -187,9 +202,16 @@ class GameApp:
         self.btn_reset_turn = UIButton((1058, 638, 196, 38), "RESET INPUTS", self._reset_turn_inputs_for_new_turn, font_size=14, color_scheme="sand")
 
         # In-Game Header Buttons (Top-Right)
-        self.btn_pause = UIButton((1140, 14, 110, 36), "MENU", self._open_pause_modal, font_size=15)
-        self.btn_save = UIButton((1020, 14, 110, 36), "SAVE", self._save_game_action, font_size=15, color_scheme="lapis")
-        self.btn_goals = UIButton((900, 14, 105, 36), "GOALS", self._open_scenario_goals_modal, font_size=15, color_scheme="gold")
+        uname = self.auth.get_current_username()
+        self.btn_profile = UIButton((710, 14, 135, 36), f"RULER: {uname[:10]}", self._open_profile_modal, font_size=13, color_scheme="gold")
+        self.btn_save = UIButton((855, 14, 90, 36), "SAVES", lambda: self._open_save_slots_modal("SAVE"), font_size=14, color_scheme="lapis")
+        self.btn_toggle_view = UIButton((955, 14, 115, 36), "PANORAMA", self._toggle_command_deck, font_size=13)
+        self.btn_pause = UIButton((1080, 14, 85, 36), "MENU", self._open_pause_modal, font_size=14)
+        self.btn_goals = UIButton((610, 14, 90, 36), "GOALS", self._open_scenario_goals_modal, font_size=13, color_scheme="gold")
+
+        # Floating quick controls in panorama mode
+        self.btn_quick_enact = UIButton((1060, 664, 190, 42), "ENACT DECREE", self._on_execute_turn, font_size=16, primary=True)
+        self.btn_expand_deck = UIButton((890, 664, 160, 42), "▲ EXPAND DECK", self._toggle_command_deck, font_size=13, color_scheme="lapis")
 
     def _init_menu_buttons(self) -> None:
         """Creates main menu buttons with robust spacing and save file detection."""
@@ -224,6 +246,9 @@ class GameApp:
             ]
 
         self.btn_watch_prologue = UIButton((960, 595, 270, 44), "WATCH ROYAL PROLOGUE", self.cinematics.trigger_prologue, primary=True)
+        # Top header auth buttons for main menu
+        self.btn_menu_profile = UIButton((960, 20, 280, 40), f"SOVEREIGN: {self.auth.get_current_username()[:16]}", self._open_profile_modal, font_size=13, color_scheme="gold")
+        self.btn_menu_saves = UIButton((660, 20, 280, 40), "MULTI-SLOT SAVES", lambda: self._open_save_slots_modal("LOAD"), font_size=13, color_scheme="lapis")
 
     def _on_input_changed(self, _: int) -> None:
         """Updates UI limits dynamically when inputs change without infinite recursion."""
@@ -635,6 +660,90 @@ class GameApp:
         else:
             self.show_toast("No valid save file found.")
 
+    def _open_profile_modal(self) -> None:
+        prof = self.auth.get_current_profile()
+        initial_mode = "PROFILE" if (prof and not prof.is_guest) else "LOGIN"
+        self.auth_modal = AuthModal(self.auth, on_success=self._on_auth_success, initial_mode=initial_mode)
+
+    def _open_save_slots_modal(self, action: str = "SAVE") -> None:
+        self.auth_modal = AuthModal(self.auth, on_success=self._on_auth_success, initial_mode="SAVES")
+        self.auth_modal.set_save_context(
+            action=action,
+            state_getter=self._get_state_for_save_dict,
+            on_load=self._on_load_state_from_dict,
+        )
+
+    def _on_auth_success(self) -> None:
+        uname = self.auth.get_current_username()
+        if hasattr(self, "btn_profile"):
+            self.btn_profile.text = f"RULER: {uname[:10]}"
+        if hasattr(self, "btn_menu_profile"):
+            self.btn_menu_profile.text = f"SOVEREIGN: {uname[:16]}"
+
+    def _toggle_command_deck(self) -> None:
+        self.is_command_deck_collapsed = not self.is_command_deck_collapsed
+        if hasattr(self, "btn_toggle_view"):
+            self.btn_toggle_view.text = "EXPAND" if self.is_command_deck_collapsed else "PANORAMA"
+        SoundSynthesizer.play("click")
+
+    def _get_state_for_save_dict(self) -> Optional[dict]:
+        st = self._get_current_game_state()
+        if not st:
+            return None
+        return {
+            "mode": self.active_mode,
+            "year": st.year,
+            "population": st.population,
+            "bushels": st.bushels,
+            "acres": st.acres,
+            "land_price": st.land_price,
+            "starved_this_year": st.starved_this_year,
+            "immigrants_this_year": st.immigrants_this_year,
+            "harvest_yield": st.harvest_yield,
+            "rats_ate": st.rats_ate,
+            "starved_total": st.starved_total,
+            "starved_pct_avg": st.starved_pct_avg,
+            "plague_struck": st.plague_struck,
+            "game_over": st.game_over,
+            "game_over_reason": st.game_over_reason,
+            "enhanced_mode": self.enhanced_state.mode if self.enhanced_state else "CLASSIC",
+            "scenario_id": self.enhanced_state.scenario_id if self.enhanced_state else None,
+        }
+
+    def _on_load_state_from_dict(self, data: dict) -> None:
+        from game_logic import GameState
+        mode = data.get("mode", "CLASSIC")
+        st = GameState(
+            year=data.get("year", 1),
+            starved_this_year=data.get("starved_this_year", 0),
+            immigrants_this_year=data.get("immigrants_this_year", 5),
+            population=data.get("population", 100),
+            harvest_yield=data.get("harvest_yield", 3),
+            bushels=data.get("bushels", 2800),
+            rats_ate=data.get("rats_ate", 200),
+            acres=data.get("acres", 1000),
+            land_price=data.get("land_price", 19),
+            starved_total=data.get("starved_total", 0),
+            starved_pct_avg=data.get("starved_pct_avg", 0.0),
+            plague_struck=data.get("plague_struck", False),
+            game_over=data.get("game_over", False),
+            game_over_reason=data.get("game_over_reason", None),
+        )
+        if mode == "CLASSIC":
+            self.active_mode = "CLASSIC"
+            self.classic_state = st
+            self.enhanced_state = None
+        else:
+            self.active_mode = "ENHANCED"
+            self.enhanced_state = EnhancedGameState(
+                classic_state=st,
+                mode=data.get("enhanced_mode", "CLASSIC"),
+                scenario_id=data.get("scenario_id", None),
+            )
+        self.current_screen = "GAMEPLAY"
+        self._reset_turn_inputs_for_new_turn()
+        self.show_toast(f"Empire restored from parchment scroll (Year {st.year})!")
+
     def show_toast(self, message: str) -> None:
         self.active_toast = UIToast(message)
 
@@ -861,6 +970,10 @@ class GameApp:
                 return
 
         # Modal event consumption
+        if getattr(self, "auth_modal", None) and self.auth_modal.is_open:
+            if self.auth_modal.handle_event(event, canvas_mouse):
+                return
+
         if self.active_modal:
             self.active_modal.handle_event(event, canvas_mouse)
             return
@@ -917,6 +1030,11 @@ class GameApp:
                     self.menu_buttons[self.selected_menu_idx].trigger()
                 return
 
+        if hasattr(self, "btn_menu_profile") and self.btn_menu_profile.handle_event(event, mouse_pos):
+            return
+        if hasattr(self, "btn_menu_saves") and self.btn_menu_saves.handle_event(event, mouse_pos):
+            return
+
         if hasattr(self, "btn_watch_prologue") and self.btn_watch_prologue.handle_event(event, mouse_pos):
             return
 
@@ -925,9 +1043,13 @@ class GameApp:
 
     def _handle_gameplay_events(self, event: pygame.event.Event, mouse_pos: Tuple[int, int]) -> None:
         # In-Game Header Buttons
-        if self.btn_pause.handle_event(event, mouse_pos):
+        if hasattr(self, "btn_profile") and self.btn_profile.handle_event(event, mouse_pos):
             return
-        if self.btn_save.handle_event(event, mouse_pos):
+        if hasattr(self, "btn_save") and self.btn_save.handle_event(event, mouse_pos):
+            return
+        if hasattr(self, "btn_toggle_view") and self.btn_toggle_view.handle_event(event, mouse_pos):
+            return
+        if hasattr(self, "btn_pause") and self.btn_pause.handle_event(event, mouse_pos):
             return
 
         # Scenario Goals button in header
@@ -936,7 +1058,42 @@ class GameApp:
             and self.enhanced_state is not None
             and self.enhanced_state.mode == "SCENARIO"
         ):
-            if self.btn_goals.handle_event(event, mouse_pos):
+            if hasattr(self, "btn_goals") and self.btn_goals.handle_event(event, mouse_pos):
+                return
+
+        # District navigation pins & dock tabs
+        dist_clicked = self.districts.handle_event(event, mouse_pos)
+        if dist_clicked:
+            st = self._get_current_game_state()
+            if dist_clicked == "palace":
+                self._on_execute_turn()
+            elif dist_clicked == "granary":
+                self.is_command_deck_collapsed = False
+                self.input_feed.is_active = True
+                self.show_toast(f"Granary Silos: {st.bushels if st else 0} bu stored.")
+            elif dist_clicked == "farmland":
+                self.is_command_deck_collapsed = False
+                self.input_plant.is_active = True
+                self.show_toast(f"Farmlands: Sowing seed across {st.acres if st else 0} acres.")
+            elif dist_clicked == "market":
+                self.is_command_deck_collapsed = False
+                self.input_buy.is_active = True
+                self.show_toast(f"Marketplace: Land trading at {st.land_price if st else 0} bu/ac.")
+            elif dist_clicked == "archives":
+                self._open_chronicle_modal()
+            elif dist_clicked == "temple":
+                SoundSynthesizer.play("bell")
+                self.show_toast("The High Priest of Shamash offers prayers on the Ziggurat!")
+            elif dist_clicked == "gates":
+                SoundSynthesizer.play("coin")
+                self.show_toast(f"Ishtar Gates: {st.population if st else 0} citizens dwell within.")
+            return
+
+        # Floating panorama controls
+        if getattr(self, "is_command_deck_collapsed", False):
+            if hasattr(self, "btn_quick_enact") and self.btn_quick_enact.handle_event(event, mouse_pos):
+                return
+            if hasattr(self, "btn_expand_deck") and self.btn_expand_deck.handle_event(event, mouse_pos):
                 return
 
         # Execute & Reset Buttons
@@ -1093,6 +1250,8 @@ class GameApp:
                 self.hammurabi.update(dt)
             if hasattr(self, "advisor_portrait"):
                 self.advisor_portrait.update(dt)
+            if hasattr(self, "districts"):
+                self.districts.update(dt)
         if hasattr(self, "cinematics"):
             self.cinematics.update(dt)
 
@@ -1112,6 +1271,10 @@ class GameApp:
         # Modal dialogs
         if self.active_modal:
             self.active_modal.draw(self.canvas)
+
+        # Auth & Profile modal
+        if getattr(self, "auth_modal", None) and self.auth_modal.is_open:
+            self.auth_modal.draw(self.canvas)
 
         # Active toast notifications
         if self.active_toast:
@@ -1138,20 +1301,35 @@ class GameApp:
         # Background living world scene
         self.world.render(self.canvas)
 
+        # Main Menu Top Header Bar (Deep Sapphire Glass)
+        m_hdr_rect = pygame.Rect(0, 0, BASE_WIDTH, 64)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, m_hdr_rect)
+        pygame.draw.line(self.canvas, Palette.GOLD_BASE, (0, 64), (BASE_WIDTH, 64), 2)
+
+        # Title on left of header
+        top_title = FontManager.header(16).render("RETROREVIVE KINGDOM SYSTEM: ANCIENT BABYLON", True, Palette.GOLD_LIGHT)
+        self.canvas.blit(top_title, (24, 22))
+
+        # Profile and multi-slot saves buttons on top right
+        if hasattr(self, "btn_menu_saves"):
+            self.btn_menu_saves.draw(self.canvas)
+        if hasattr(self, "btn_menu_profile"):
+            self.btn_menu_profile.draw(self.canvas)
+
         # -------------------------------------------------------------
         # Left Royal Pavilion: King Hammurabi
         # -------------------------------------------------------------
         left_w, left_h = 310, 580
         lx, ly = 30, 85
-        pygame.draw.rect(self.canvas, (20, 16, 12, 230), (lx, ly, left_w, left_h), border_radius=12)
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (lx, ly, left_w, left_h), width=2, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, (lx, ly, left_w, left_h), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (lx, ly, left_w, left_h), width=2, border_radius=12)
 
         # Hammurabi animated bust with breathing, blinking, and sceptre gleam
         self.hammurabi.draw_bust(self.canvas, center_x=lx + left_w // 2, center_y=ly + 195, size=210)
 
         # Royal Plaque underneath the bust
         plaque_rect = pygame.Rect(lx + 20, ly + 360, left_w - 40, 70)
-        pygame.draw.rect(self.canvas, (32, 24, 16), plaque_rect, border_radius=6)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_BASE, plaque_rect, border_radius=6)
         pygame.draw.rect(self.canvas, Palette.GOLD_BASE, plaque_rect, width=1, border_radius=6)
         k_title = FontManager.header(19).render("KING HAMMURABI", True, Palette.GOLD_PALE)
         k_sub = FontManager.small(12).render("Sixth King of Babylon", True, Palette.SAND_LIGHT)
@@ -1177,11 +1355,11 @@ class GameApp:
         # Center Menu Card: Title and Game Modes
         # -------------------------------------------------------------
         overlay = pygame.Surface((540, 580), pygame.SRCALPHA)
-        overlay.fill((20, 16, 12, 230))
+        overlay.fill(Palette.SAPPHIRE_PANEL)
         ox = (BASE_WIDTH - 540) // 2
         oy = 85
         self.canvas.blit(overlay, (ox, oy))
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (ox, oy, 540, 580), width=2, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (ox, oy, 540, 580), width=2, border_radius=12)
 
         # Game Title & Subtitles
         title_surf = FontManager.title(42).render("RETROREVIVE", True, Palette.GOLD_PALE)
@@ -1208,8 +1386,8 @@ class GameApp:
         # -------------------------------------------------------------
         rx, ry = 940, 85
         rw, rh = 310, 580
-        pygame.draw.rect(self.canvas, (20, 16, 12, 230), (rx, ry, rw, rh), border_radius=12)
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (rx, ry, rw, rh), width=2, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, (rx, ry, rw, rh), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (rx, ry, rw, rh), width=2, border_radius=12)
 
         s_hdr = FontManager.header(18).render("THE ROYAL STELE", True, Palette.GOLD_PALE)
         s_sub = FontManager.small(11).render("PROCLAMATION OF JUSTICE", True, Palette.TEXT_MUTED)
@@ -1261,10 +1439,13 @@ class GameApp:
         # 1. Background living world
         self.world.render(self.canvas, state=st)
 
-        # 2. Top HUD Bar
-        hud_rect = pygame.Rect(0, 0, BASE_WIDTH, 64)
-        pygame.draw.rect(self.canvas, Palette.PANEL_BG, hud_rect)
-        pygame.draw.line(self.canvas, Palette.GOLD_BASE, (0, 64), (BASE_WIDTH, 64), 2)
+        # 1b. Living kingdom district pins and interactive hotspots
+        self.districts.draw_world_pins(self.canvas, st, pygame.mouse.get_pos())
+
+        # 2. Top HUD Bar (Deep Sapphire Glass)
+        hud_rect = pygame.Rect(0, 0, BASE_WIDTH, 62)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, hud_rect)
+        pygame.draw.line(self.canvas, Palette.GOLD_BASE, (0, 62), (BASE_WIDTH, 62), 2)
 
         # Mode Badge & Scenario Status
         is_scenario = (
@@ -1282,42 +1463,78 @@ class GameApp:
             badge_col = Palette.GOLD_LIGHT
             target_yr = scen.target_year
         elif self.active_mode == "CLASSIC":
-            mode_label = "[CLASSIC MODE]"
+            mode_label = "[CLASSIC 1978]"
             badge_col = Palette.SAND_LIGHT
             target_yr = 10
         else:
-            mode_label = "[ENHANCED MODE]"
+            mode_label = "[ENHANCED REALM]"
             badge_col = Palette.LAPIS_LIGHT
             target_yr = 10
 
-        b_surf = FontManager.header(17).render(mode_label, True, badge_col)
-        self.canvas.blit(b_surf, (20, 20))
+        b_surf = FontManager.header(15).render(mode_label, True, badge_col)
+        self.canvas.blit(b_surf, (16, 21))
 
         # Year Indicator
-        yr_surf = FontManager.header(21).render(f"YEAR {st.year} OF {target_yr}", True, Palette.GOLD_PALE)
-        yr_x = 20 + b_surf.get_width() + 16
-        self.canvas.blit(yr_surf, (yr_x, 19))
+        yr_surf = FontManager.header(19).render(f"YEAR {st.year} OF {target_yr}", True, Palette.GOLD_PALE)
+        yr_x = 16 + b_surf.get_width() + 14
+        self.canvas.blit(yr_surf, (yr_x, 20))
 
         # Quick Stats in HUD
         hud_stat = (
-            f"Citizens: {st.population}  |  Land: {st.acres} ac  |  "
-            f"Grain: {st.bushels} bu  |  Price: {st.land_price} bu/ac"
+            f"Pop: {st.population:,}  |  Land: {st.acres:,} ac  |  "
+            f"Grain: {st.bushels:,} bu  |  Price: {st.land_price} bu/ac"
         )
-        stat_x = yr_x + yr_surf.get_width() + 18
-        stat_surf = FontManager.body(17).render(hud_stat, True, Palette.TEXT_BODY)
+        stat_x = yr_x + yr_surf.get_width() + 16
+        stat_surf = FontManager.body(15).render(hud_stat, True, Palette.TEXT_BODY)
         self.canvas.blit(stat_surf, (stat_x, 21))
 
-        # In-game buttons (Pause, Save, and Goals if scenario)
-        self.btn_pause.draw(self.canvas)
-        self.btn_save.draw(self.canvas)
-        if is_scenario:
+        # In-game buttons (Profile, Saves, Panorama View, Pause Menu, Goals)
+        if hasattr(self, "btn_profile"):
+            self.btn_profile.rect = pygame.Rect(720, 14, 130, 36)
+            self.btn_profile.draw(self.canvas)
+        if hasattr(self, "btn_save"):
+            self.btn_save.rect = pygame.Rect(856, 14, 85, 36)
+            self.btn_save.draw(self.canvas)
+        if hasattr(self, "btn_toggle_view"):
+            self.btn_toggle_view.rect = pygame.Rect(947, 14, 110, 36)
+            self.btn_toggle_view.draw(self.canvas)
+        if hasattr(self, "btn_pause"):
+            self.btn_pause.rect = pygame.Rect(1063, 14, 85, 36)
+            self.btn_pause.draw(self.canvas)
+        if is_scenario and hasattr(self, "btn_goals"):
+            self.btn_goals.rect = pygame.Rect(1154, 14, 85, 36)
             self.btn_goals.draw(self.canvas)
 
-        # 3. Annual Report Briefing Card (Upper Floating Card)
+        # -------------------------------------------------------------
+        # PANORAMA COLLAPSED MODE (>90% of screen displays kingdom)
+        # -------------------------------------------------------------
+        if getattr(self, "is_command_deck_collapsed", False):
+            preview = DecreePreviewData(st, self.input_buy.value, self.input_sell.value, self.input_feed.value, self.input_plant.value)
+            pill_rect = pygame.Rect(30, 615, 1220, 48)
+            pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, pill_rect, border_radius=8)
+            pygame.draw.rect(self.canvas, Palette.GOLD_BASE, pill_rect, width=2, border_radius=8)
+
+            p_txt = f"PANORAMA VIEW  |  Year {st.year}  |  Citizens: {st.population:,}  |  Est. Balance: {preview.grain_balance:,} bu  |  Rationed: {preview.citizens_fed}/{st.population}"
+            p_surf = FontManager.header(14).render(p_txt, True, Palette.GOLD_PALE)
+            self.canvas.blit(p_surf, (pill_rect.x + 18, pill_rect.y + 14))
+
+            self.btn_quick_enact.rect = pygame.Rect(pill_rect.right - 180, pill_rect.y + 5, 168, 38)
+            self.btn_expand_deck.rect = pygame.Rect(pill_rect.right - 350, pill_rect.y + 5, 160, 38)
+            self.btn_expand_deck.draw(self.canvas)
+            self.btn_quick_enact.draw(self.canvas)
+
+            # District Dock at bottom
+            self.districts.draw_district_dock(self.canvas, getattr(self.districts.selected_district, "district_id", None))
+            return
+
+        # -------------------------------------------------------------
+        # STANDARD DOCK MODE: Upper Floating Cards & Bottom Command Deck
+        # -------------------------------------------------------------
+        # 3. Annual Report Briefing Card (Upper Floating Card - Sapphire Glass)
         card_w, card_h = 570, 205
         card_x, card_y = 28, 74
-        pygame.draw.rect(self.canvas, (28, 22, 18, 225), (card_x, card_y, card_w, card_h), border_radius=8)
-        pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, (card_x, card_y, card_w, card_h), width=2, border_radius=8)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_GLASS, (card_x, card_y, card_w, card_h), border_radius=8)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (card_x, card_y, card_w, card_h), width=2, border_radius=8)
 
         # Header in briefing
         rep_hdr = FontManager.header(17).render(f"HAMURABI: REPORT FOR YEAR {st.year}", True, Palette.GOLD_PALE)
@@ -1379,8 +1596,8 @@ class GameApp:
         # 3b. Grand Vizier's Live Ministerial Council Card (Upper Right Card: 618 to 1252)
         adv_x, adv_y = 618, 74
         adv_w, adv_h = 634, 205
-        pygame.draw.rect(self.canvas, (28, 22, 18, 225), (adv_x, adv_y, adv_w, adv_h), border_radius=8)
-        pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, (adv_x, adv_y, adv_w, adv_h), width=2, border_radius=8)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_GLASS, (adv_x, adv_y, adv_w, adv_h), border_radius=8)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (adv_x, adv_y, adv_w, adv_h), width=2, border_radius=8)
 
         # Header
         viz_hdr = FontManager.header(17).render("MINISTERIAL AUDIENCE & STRATEGY", True, Palette.GOLD_PALE)
@@ -1467,10 +1684,10 @@ class GameApp:
             self.canvas.blit(m_s, (content_x, sy))
             sy += 19
 
-        # 4. Interactive Turn Decision Panel (Bottom half: y = 428 to 710)
+        # 4. Interactive Turn Decision Panel (Bottom half: y = 428 to 710 - Sapphire Panel)
         panel_rect = pygame.Rect(16, 428, 1248, 282)
-        pygame.draw.rect(self.canvas, (32, 26, 20, 235), panel_rect, border_radius=10)
-        pygame.draw.rect(self.canvas, Palette.PANEL_BORDER_LIGHT, panel_rect, width=2, border_radius=10)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, panel_rect, border_radius=10)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, panel_rect, width=2, border_radius=10)
 
         # Title of Decision Panel & Shortcut hints
         dec_title = FontManager.header(17).render("ROYAL DECREES & RESOURCE ALLOCATION", True, Palette.GOLD_PALE)
@@ -1506,20 +1723,23 @@ class GameApp:
             self.btn_reset_turn.draw(self.canvas)
 
             badge_box = pygame.Rect(1058, 588, 196, 96)
-            pygame.draw.rect(self.canvas, (24, 18, 14), badge_box, border_radius=6)
+            pygame.draw.rect(self.canvas, Palette.SAPPHIRE_BASE, badge_box, border_radius=6)
             pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, badge_box, width=1, border_radius=6)
             self.canvas.blit(FontManager.header(13).render("CLASSIC 1978 RULES", True, Palette.GOLD_LIGHT), (1068, 598))
             self.canvas.blit(FontManager.small(11).render("• Microsoft BASIC engine", True, Palette.TEXT_MUTED), (1068, 622))
             self.canvas.blit(FontManager.small(11).render("• D < 10*P strict labor limit", True, Palette.TEXT_MUTED), (1068, 642))
             self.canvas.blit(FontManager.small(11).render("• Advisors inactive in Classic", True, Palette.TEXT_MUTED), (1068, 662))
 
+        # Bottom District Navigation Dock
+        self.districts.draw_district_dock(self.canvas, getattr(self.districts.selected_district, "district_id", None))
+
     def _draw_game_over(self) -> None:
         self.world.render(self.canvas)
 
         panel_w, panel_h = 760, 520
         px, py = (BASE_WIDTH - panel_w) // 2, 70
-        pygame.draw.rect(self.canvas, (24, 18, 14, 235), (px, py, panel_w, panel_h), border_radius=12)
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (px, py, panel_w, panel_h), width=3, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, (px, py, panel_w, panel_h), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (px, py, panel_w, panel_h), width=3, border_radius=12)
 
         if not self.game_over_result:
             return
@@ -1532,8 +1752,8 @@ class GameApp:
         # -------------------------------------------------------------
         lx, ly = 24, 70
         lw, lh = 216, 520
-        pygame.draw.rect(self.canvas, (24, 18, 14, 235), (lx, ly, lw, lh), border_radius=12)
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (lx, ly, lw, lh), width=2, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, (lx, ly, lw, lh), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (lx, ly, lw, lh), width=2, border_radius=12)
         self.hammurabi.draw_bust(self.canvas, center_x=lx + lw // 2, center_y=ly + 190, size=190)
 
         # Title under bust
@@ -1555,7 +1775,7 @@ class GameApp:
             r_desc = "Cast into Ignominy"
 
         p_rect = pygame.Rect(lx + 12, ly + 340, lw - 24, 60)
-        pygame.draw.rect(self.canvas, (32, 24, 16), p_rect, border_radius=6)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_BASE, p_rect, border_radius=6)
         pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, p_rect, width=1, border_radius=6)
         self.canvas.blit(FontManager.header(14).render(r_title, True, r_col), FontManager.header(14).render(r_title, True, r_col).get_rect(center=(lx + lw // 2, ly + 358)))
         self.canvas.blit(FontManager.small(11).render(r_desc, True, Palette.TEXT_MUTED), FontManager.small(11).render(r_desc, True, Palette.TEXT_MUTED).get_rect(center=(lx + lw // 2, ly + 382)))
@@ -1620,7 +1840,7 @@ class GameApp:
 
         # Historical Outcome Box
         box_rect = pygame.Rect(px + 40, curr_y + 10, panel_w - 80, 160)
-        pygame.draw.rect(self.canvas, (42, 32, 24), box_rect, border_radius=8)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_BASE, box_rect, border_radius=8)
         border_col = Palette.GOLD_BASE if tier == 4 else Palette.CRIMSON_LIGHT if tier == 1 else Palette.PANEL_BORDER
         pygame.draw.rect(self.canvas, border_col, box_rect, width=2, border_radius=8)
 
@@ -1659,8 +1879,8 @@ class GameApp:
             cx = start_x + i * (card_w + 25)
             c_rect = pygame.Rect(cx, card_y, card_w, card_h)
 
-            pygame.draw.rect(self.canvas, (32, 24, 18, 235), c_rect, border_radius=10)
-            pygame.draw.rect(self.canvas, Palette.PANEL_BORDER_LIGHT, c_rect, width=2, border_radius=10)
+            pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, c_rect, border_radius=10)
+            pygame.draw.rect(self.canvas, Palette.GOLD_BASE, c_rect, width=2, border_radius=10)
 
             # Card Header
             title_s = FontManager.header(17).render(scen.title, True, Palette.GOLD_PALE)
@@ -1739,8 +1959,8 @@ class GameApp:
 
         panel_w, panel_h = 920, 580
         px, py = (BASE_WIDTH - panel_w) // 2, 70
-        pygame.draw.rect(self.canvas, (26, 20, 16, 240), (px, py, panel_w, panel_h), border_radius=12)
-        pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, (px, py, panel_w, panel_h), width=3, border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.SAPPHIRE_PANEL, (px, py, panel_w, panel_h), border_radius=12)
+        pygame.draw.rect(self.canvas, Palette.GOLD_BASE, (px, py, panel_w, panel_h), width=3, border_radius=12)
 
         self.btn_instructions_back.draw(self.canvas)
 
@@ -1821,7 +2041,7 @@ class GameApp:
                 pygame.draw.rect(self.canvas, Palette.GOLD_LIGHT, dot_rect, border_radius=4)
                 d_col = Palette.TEXT_DARK
             else:
-                pygame.draw.rect(self.canvas, (45, 36, 28), dot_rect, border_radius=4)
+                pygame.draw.rect(self.canvas, Palette.SAPPHIRE_BASE, dot_rect, border_radius=4)
                 pygame.draw.rect(self.canvas, Palette.PANEL_BORDER, dot_rect, width=1, border_radius=4)
                 d_col = Palette.TEXT_MUTED
             num_surf = FontManager.mono(11).render(str(s + 1), True, d_col)

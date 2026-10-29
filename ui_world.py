@@ -15,6 +15,7 @@ Renders an authentic, layered ancient Mesopotamian environment:
 """
 
 import math
+import os
 import random
 from typing import List, Optional, Tuple
 import pygame
@@ -207,6 +208,16 @@ class WorldRenderer:
         self._cached_sky_surf: Optional[pygame.Surface] = None
         self._cached_sky_year: Optional[int] = None
 
+        # Photorealistic AAA World Background
+        self.bg_image: Optional[pygame.Surface] = None
+        bg_path = os.path.join(os.path.dirname(__file__), "assets", "babylon_world_bg.jpg")
+        if os.path.exists(bg_path):
+            try:
+                raw_bg = pygame.image.load(bg_path)
+                self.bg_image = pygame.transform.smoothscale(raw_bg, (1280, 720))
+            except Exception:
+                self.bg_image = None
+
     def _get_sky_surface(self, yr: int) -> pygame.Surface:
         if self._cached_sky_surf is not None and self._cached_sky_year == yr:
             return self._cached_sky_surf
@@ -291,7 +302,83 @@ class WorldRenderer:
         self.particles = [p for p in self.particles if p.update(dt)]
 
     def render(self, surface: pygame.Surface, state: Optional[GameState] = None) -> None:
-        """Renders the comprehensive living Mesopotamian environment."""
+        """Renders the monumental living Babylonian environment."""
+        if self.bg_image is not None:
+            # 1. Photorealistic panoramic Babylon at golden hour
+            surface.blit(self.bg_image, (0, 0))
+
+            # 2. Dynamic atmospheric daylight / golden hour sun glow
+            sun_pulse = math.sin(self.time_elapsed * 1.5) * 6
+            glow_surf = pygame.Surface((240, 240), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (255, 230, 140, 45), (120, 120), int(90 + sun_pulse))
+            pygame.draw.circle(glow_surf, (255, 245, 180, 75), (120, 120), int(55 + sun_pulse * 0.5))
+            surface.blit(glow_surf, (660 - 120, 195 - 120))
+
+            # 3. Ambient volumetric clouds and circling birds in distance
+            for cloud in self.clouds:
+                cloud.draw(surface)
+            self.birds.draw(surface, self.time_elapsed)
+
+            # 4. Animated River waves / caustics along the Euphrates
+            for i in range(12):
+                rx = (i * 95 + int(self.time_elapsed * 28.0)) % 750 + 80
+                wave_y = 480 + int(math.sin(self.time_elapsed * 2.8 + i) * 6) + (i % 4) * 16
+                if wave_y < 700:
+                    pygame.draw.arc(surface, (255, 245, 200, 130), (rx, wave_y, 40, 10), 0.2, 2.9, width=2)
+
+            # 5. Temple brazier smoke & ember particles
+            if random.random() < 0.25:
+                # Ziggurat summit braziers
+                self.particles.append(Particle(
+                    x=835 + random.uniform(-8, 8),
+                    y=125,
+                    vx=random.uniform(-4, 8),
+                    vy=random.uniform(-14, -26),
+                    color=(240, 210, 140),
+                    lifetime=2.5,
+                    size=random.randint(2, 4),
+                    gravity=-0.5
+                ))
+            if random.random() < 0.35:
+                # City gate braziers
+                self.particles.append(Particle(
+                    x=1120 + random.uniform(-6, 6),
+                    y=480,
+                    vx=random.uniform(-6, 6),
+                    vy=random.uniform(-18, -32),
+                    color=(255, 140, 40),
+                    lifetime=1.8,
+                    size=random.randint(2, 3),
+                    gravity=-1.0
+                ))
+
+            # 6. Dynamic Game State Overlays
+            if state is not None:
+                # Harvest / Bumper Golden Light
+                if state.harvest_yield >= 5:
+                    h_wash = pygame.Surface((1280, 720), pygame.SRCALPHA)
+                    h_wash.fill((255, 215, 80, 22))
+                    surface.blit(h_wash, (0, 0))
+                # Drought Arid Dust Haze
+                elif state.harvest_yield == 1:
+                    d_wash = pygame.Surface((1280, 720), pygame.SRCALPHA)
+                    d_wash.fill((190, 140, 70, 45))
+                    surface.blit(d_wash, (0, 0))
+                # Plague Somber Twilight Vignette
+                elif state.plague_struck:
+                    p_wash = pygame.Surface((1280, 720), pygame.SRCALPHA)
+                    p_wash.fill((70, 30, 80, 55))
+                    surface.blit(p_wash, (0, 0))
+
+            # 7. Active particles (Embers, smoke plumes, fireworks)
+            for particle in self.particles:
+                particle.draw(surface)
+
+        else:
+            self._render_procedural_fallback(surface, state)
+
+    def _render_procedural_fallback(self, surface: pygame.Surface, state: Optional[GameState] = None) -> None:
+        """Renders procedural fallback when offline or when high-res assets are absent."""
         # 1. Base Dark Clearing
         surface.fill(Palette.BG_DARK)
 

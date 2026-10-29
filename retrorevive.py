@@ -11,8 +11,10 @@ from typing import Callable, List, Optional, Tuple
 
 import pygame
 
+from auth_manager import AuthManager
 from game_registry import CATALOG, GameCategory, GameMetadata, GameRegistry, GameStatus
 from games import matches_app
+from ui_auth import AuthModal
 from ui_pygame import BASE_HEIGHT, BASE_WIDTH, GameApp
 from ui_theme import FontManager, Palette, SoundSynthesizer, UIButton
 
@@ -124,9 +126,19 @@ class LibraryCard:
 class RetroReviveHub:
     """Main graphical platform application controller."""
 
-    def __init__(self, start_fullscreen: bool = False) -> None:
+    def __init__(
+        self,
+        start_fullscreen: bool = False,
+        auth: Optional[AuthManager] = None,
+        show_auth_modal: bool = False,
+    ) -> None:
         pygame.init()
         SoundSynthesizer.init()
+
+        self.auth = auth or AuthManager()
+        self.auth_modal: Optional[AuthModal] = None
+        if show_auth_modal:
+            self._open_auth_modal()
 
         self.registry = GameRegistry()
         self.screen_width = BASE_WIDTH
@@ -158,12 +170,24 @@ class RetroReviveHub:
         self._refresh_game_cards()
 
     def _init_header_buttons(self) -> None:
+        uname = self.auth.get_current_username()
+        self.btn_auth = UIButton((BASE_WIDTH - 490, 16, 235, 36), f"SOVEREIGN: {uname[:12]}", self._open_auth_modal, font_size=13, color_scheme="gold")
         self.btn_audio = UIButton((BASE_WIDTH - 240, 16, 105, 36), "AUDIO: ON", self._toggle_audio, color_scheme="gold", font_size=13)
         self.btn_quit = UIButton((BASE_WIDTH - 120, 16, 90, 36), "QUIT", self.quit, color_scheme="crimson", font_size=13)
 
         # Modal buttons
         self.btn_modal_launch = UIButton((BASE_WIDTH // 2 - 180, 565, 160, 44), "LAUNCH GAME", self._launch_modal_game, primary=True)
         self.btn_modal_close = UIButton((BASE_WIDTH // 2 + 20, 565, 160, 44), "BACK", self._close_modal, color_scheme="sand")
+
+    def _open_auth_modal(self) -> None:
+        prof = self.auth.get_current_profile()
+        initial_mode = "PROFILE" if (prof and not prof.is_guest) else "LOGIN"
+        self.auth_modal = AuthModal(self.auth, on_success=self._on_auth_success, initial_mode=initial_mode)
+
+    def _on_auth_success(self) -> None:
+        uname = self.auth.get_current_username()
+        if hasattr(self, "btn_auth"):
+            self.btn_auth.text = f"SOVEREIGN: {uname[:12]}"
 
     def _init_category_buttons(self) -> None:
         categories = [
@@ -254,6 +278,7 @@ class RetroReviveHub:
             self.active_subapp = GameApp(
                 shared_window=self.window,
                 on_exit_to_library=self._return_to_hub,
+                auth=self.auth,
             )
         elif game_id == "23_matches":
             self.active_subapp = matches_app.MatchesApp(
@@ -268,6 +293,8 @@ class RetroReviveHub:
         """Callback invoked by game subapps when the player returns to the library."""
         self.active_subapp = None
         pygame.display.set_caption("RetroRevive — Classic Computer Games Platform")
+        if hasattr(self, "btn_auth"):
+            self.btn_auth.text = f"SOVEREIGN: {self.auth.get_current_username()[:12]}"
         self._refresh_game_cards()
         SoundSynthesizer.play("click")
 
@@ -281,6 +308,11 @@ class RetroReviveHub:
             return
 
         canvas_mouse = self._screen_to_canvas(pygame.mouse.get_pos())
+
+        # Auth Modal Event Handling (Top Priority)
+        if getattr(self, "auth_modal", None) and self.auth_modal.is_open:
+            if self.auth_modal.handle_event(event, canvas_mouse):
+                return
 
         if event.type == pygame.QUIT:
             self.is_running = False
@@ -308,6 +340,8 @@ class RetroReviveHub:
             return
 
         # Header buttons
+        if hasattr(self, "btn_auth") and self.btn_auth.handle_event(event, canvas_mouse):
+            return
         if self.btn_audio.handle_event(event, canvas_mouse):
             return
         if self.btn_quit.handle_event(event, canvas_mouse):
@@ -407,6 +441,8 @@ class RetroReviveHub:
         self.canvas.blit(build_badge, (360, 58))
 
         # Header action buttons
+        if hasattr(self, "btn_auth"):
+            self.btn_auth.draw(self.canvas)
         self.btn_audio.draw(self.canvas)
         self.btn_quit.draw(self.canvas)
 
@@ -450,7 +486,11 @@ class RetroReviveHub:
         if self.selected_game_for_modal is not None:
             self._draw_details_modal()
 
-        # 8. Scale canvas to window
+        # 8. Auth Modal (Login / Register / Profile)
+        if getattr(self, "auth_modal", None) and self.auth_modal.is_open:
+            self.auth_modal.draw(self.canvas)
+
+        # 9. Scale canvas to window
         self._present()
 
     def _draw_details_modal(self) -> None:

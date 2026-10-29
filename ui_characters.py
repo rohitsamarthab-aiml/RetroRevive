@@ -15,11 +15,21 @@ Features:
 """
 
 import math
+import os
 import random
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import pygame
 
 from ui_theme import Palette
+
+
+def make_circular_portrait(image: pygame.Surface, size: int) -> pygame.Surface:
+    """Creates a smooth anti-aliased circular cropped portrait."""
+    scaled = pygame.transform.smoothscale(image, (size, size))
+    masked = pygame.Surface((size, size), pygame.SRCALPHA)
+    pygame.draw.circle(masked, (255, 255, 255, 255), (size // 2, size // 2), size // 2)
+    masked.blit(scaled, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    return masked
 
 
 class RoyalHammurabi:
@@ -34,6 +44,16 @@ class RoyalHammurabi:
         self.blink_timer = random.uniform(2.0, 5.0)
         self.is_blinking = False
         self.sceptre_gleam = 0.0
+
+        # Photorealistic King Hammurabi Portrait Asset
+        self.portrait_img: Optional[pygame.Surface] = None
+        self._cached_portraits: Dict[int, pygame.Surface] = {}
+        p_path = os.path.join(os.path.dirname(__file__), "assets", "hammurabi_portrait.jpg")
+        if os.path.exists(p_path):
+            try:
+                self.portrait_img = pygame.image.load(p_path)
+            except Exception:
+                self.portrait_img = None
 
     def update(self, dt: float) -> None:
         self.time += dt
@@ -54,6 +74,51 @@ class RoyalHammurabi:
         Draws a detailed royal portrait/bust of King Hammurabi for dialogues,
         menus, and royal decrees.
         """
+        if self.portrait_img is not None:
+            # Idle breathing bob
+            breath = int(math.sin(self.time * 2.0) * 2.5)
+            cy = center_y + breath
+
+            # Outer ornate royal medallion frame
+            medallion_s = size
+            inner_s = size - 14
+            if inner_s not in self._cached_portraits:
+                self._cached_portraits[inner_s] = make_circular_portrait(self.portrait_img, inner_s)
+            p_surf = self._cached_portraits[inner_s]
+
+            # 1. Dark obsidian background disc
+            pygame.draw.circle(surface, (18, 14, 12), (center_x, cy), medallion_s // 2)
+
+            # 2. Photorealistic King Hammurabi portrait
+            p_rect = p_surf.get_rect(center=(center_x, cy))
+            surface.blit(p_surf, p_rect)
+
+            # 3. Concentric Royal Gold Rings with filigree
+            pygame.draw.circle(surface, Palette.GOLD_LIGHT, (center_x, cy), medallion_s // 2, width=3)
+            pygame.draw.circle(surface, (36, 28, 20), (center_x, cy), medallion_s // 2 - 3, width=2)
+            pygame.draw.circle(surface, Palette.GOLD_BASE, (center_x, cy), medallion_s // 2 - 5, width=1)
+
+            # 4. Lapis Lazuli corner jewels at cardinal points
+            radius = medallion_s // 2 - 1
+            for angle in [0, 90, 180, 270]:
+                rad = math.radians(angle)
+                jx = int(center_x + math.cos(rad) * radius)
+                jy = int(cy + math.sin(rad) * radius)
+                pygame.draw.circle(surface, Palette.GOLD_LIGHT, (jx, jy), 5)
+                pygame.draw.circle(surface, (40, 180, 200), (jx, jy), 3)
+
+            # 5. Sceptre gleam pulse running across the upper tiara rim
+            if self.sceptre_gleam > 0.4:
+                glint_alpha = int((self.sceptre_gleam - 0.4) * 255 / 0.6)
+                glint_surf = pygame.Surface((28, 28), pygame.SRCALPHA)
+                pygame.draw.circle(glint_surf, (255, 255, 220, glint_alpha), (14, 14), 12)
+                pygame.draw.circle(glint_surf, (255, 255, 255, glint_alpha), (14, 14), 5)
+                surface.blit(glint_surf, (center_x + radius // 2 - 14, cy - radius + 10 - 14))
+        else:
+            self._draw_procedural_bust(surface, center_x, center_y, size)
+
+    def _draw_procedural_bust(self, surface: pygame.Surface, center_x: int, center_y: int, size: int = 160) -> None:
+        """Procedural fallback bust."""
         breath = math.sin(self.time * 2.0) * 2.5
         head_tilt = math.sin(self.time * 1.2) * 1.5
 
@@ -212,6 +277,14 @@ class RoyalAdvisorPortrait:
 
     def __init__(self) -> None:
         self.time = 0.0
+        self.portrait_img: Optional[pygame.Surface] = None
+        self._cached_portraits: Dict[int, pygame.Surface] = {}
+        v_path = os.path.join(os.path.dirname(__file__), "assets", "vizier_portrait.jpg")
+        if os.path.exists(v_path):
+            try:
+                self.portrait_img = pygame.image.load(v_path)
+            except Exception:
+                self.portrait_img = None
 
     def update(self, dt: float) -> None:
         self.time += dt
@@ -228,6 +301,61 @@ class RoyalAdvisorPortrait:
         **kwargs: Any,
     ) -> None:
         """Draws the advisor medallion portrait into given rect or at (x, y)."""
+        if self.portrait_img is not None:
+            target_x = target if isinstance(target, (int, float)) else center_x
+            target_y = y if y is not None else center_y
+
+            if isinstance(target, pygame.Rect):
+                w, h = target.width, target.height
+                cx, cy = target.centerx, target.centery
+            elif target_x is not None and target_y is not None:
+                w = h = size
+                cx, cy = int(target_x), int(target_y)
+            else:
+                w = h = size
+                cx, cy = w // 2, h // 2
+
+            # Idle breathing bob
+            bob = int(math.sin(self.time * 2.4) * 1.5)
+            cy += bob
+
+            inner_s = min(w, h) - 8
+            if inner_s not in self._cached_portraits:
+                self._cached_portraits[inner_s] = make_circular_portrait(self.portrait_img, inner_s)
+            p_surf = self._cached_portraits[inner_s]
+
+            # Border color based on mood
+            border_col = (
+                Palette.CRIMSON_LIGHT if mood == "alarmed"
+                else Palette.GOLD_LIGHT if mood == "celebratory"
+                else Palette.GOLD_BASE
+            )
+
+            # Dark obsidian background disc
+            pygame.draw.circle(surface, (18, 14, 12), (cx, cy), min(w, h) // 2)
+
+            # Blit photorealistic Vizier portrait
+            p_rect = p_surf.get_rect(center=(cx, cy))
+            surface.blit(p_surf, p_rect)
+
+            # Outer and inner gold/mood rings
+            pygame.draw.circle(surface, border_col, (cx, cy), min(w, h) // 2, width=3)
+            pygame.draw.circle(surface, Palette.PANEL_BORDER, (cx, cy), min(w, h) // 2 - 3, width=1)
+        else:
+            self._draw_procedural(surface, target, y, size, mood, center_x, center_y, **kwargs)
+
+    def _draw_procedural(
+        self,
+        surface: pygame.Surface,
+        target: Any = None,
+        y: Optional[int] = None,
+        size: int = 120,
+        mood: str = "normal",
+        center_x: Optional[int] = None,
+        center_y: Optional[int] = None,
+        **kwargs: Any,
+    ) -> None:
+
         target_x = target if isinstance(target, (int, float)) else center_x
         target_y = y if y is not None else center_y
 

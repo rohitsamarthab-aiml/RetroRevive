@@ -332,6 +332,16 @@ def main() -> None:
         action="store_true",
         help="Launch desktop interface in fullscreen mode",
     )
+    parser.add_argument(
+        "--login",
+        action="store_true",
+        help="Prompt for sovereign login / registration on application startup",
+    )
+    parser.add_argument(
+        "--guest",
+        action="store_true",
+        help="Start directly as Guest Sovereign without initial authentication prompt",
+    )
     # Historical Hammurabi CLI options
     parser.add_argument(
         "--relaxed",
@@ -390,6 +400,7 @@ def main() -> None:
     if not cli_flags_present:
         try:
             import pygame  # noqa: F401
+            show_auth = not args.guest
             if args.matches:
                 from games import matches_app
                 app = matches_app.MatchesApp(start_fullscreen=args.fullscreen)
@@ -397,13 +408,13 @@ def main() -> None:
                 return
             elif args.hammurabi:
                 from ui_pygame import GameApp
-                app = GameApp(start_fullscreen=args.fullscreen)
+                app = GameApp(start_fullscreen=args.fullscreen, show_auth_modal=show_auth)
                 app.run()
                 return
             else:
                 # Default: Launch RetroRevive Game Library Hub
                 import retrorevive
-                hub = retrorevive.RetroReviveHub(start_fullscreen=args.fullscreen)
+                hub = retrorevive.RetroReviveHub(start_fullscreen=args.fullscreen, show_auth_modal=show_auth)
                 hub.run()
                 return
         except ImportError:
