@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newGame, executeTurn, serialize, deserialize, upgradeBuilding, countComplete } from "../src/sim/engine";
+import { newGame, executeTurn, serialize, deserialize, upgradeBuilding } from "../src/sim/engine";
 import { advise, advisorReply } from "../src/sim/advisor";
 import { SeededRng } from "../src/sim/rng";
 import { emptyDecree, type Decree, type GameState } from "../src/sim/types";
@@ -54,6 +54,18 @@ describe("deterministic engine", () => {
     expect(b.underConstruction).toBe(false);
   });
 
+  it("multi-turn construction honors full duration (market = 2 turns)", () => {
+    const s = newGame(17);
+    s.resources.gold = 500; s.resources.stone = 100; s.resources.timber = 100;
+    executeTurn(s, { ...baseDecree, build: [{ type: "market", x: 6, z: 6 }] });
+    const m = s.buildings.find(x => x.x === 6 && x.z === 6)!;
+    expect(m.underConstruction).toBe(true);
+    executeTurn(s, baseDecree);
+    expect(m.underConstruction).toBe(true);
+    executeTurn(s, baseDecree);
+    expect(m.underConstruction).toBe(false);
+  });
+
   it("advisor warns on low grain and is read-only", () => {
     const s = newGame(11);
     s.resources.grain = 10;
@@ -84,8 +96,6 @@ describe("deterministic engine", () => {
     const s1 = newGame(21), s2 = newGame(21);
     s1.weather = { kind: "rain", intensity: 0.5, remainingTurns: 1 };
     s2.weather = { kind: "drought", intensity: 1, remainingTurns: 1 };
-    // Force the same weather by pre-setting and monkeypatching is not possible;
-    // instead just verify drought-like states produce different serializations
     expect(s1.weather.kind).not.toBe(s2.weather.kind);
   });
 
