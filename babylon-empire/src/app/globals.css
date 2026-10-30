@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --sand: #e8dcc3;
+  --sand-dim: #b8a888;
+  --brick: #c46a2a;
+  --brick-deep: #8a4517;
+  --lapis: #1e5bb8;
+  --gold: #d4a017;
+  --night: #0d0b08;
+  --panel: #1a150e;
+}
+
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  background: radial-gradient(ellipse at top, #241c10 0%, var(--night) 70%);
+  min-height: 100vh;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(38, 29, 18, 0.95), rgba(20, 15, 9, 0.95));
+  border: 1px solid rgba(212, 160, 23, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+.btn-royal {
+  background: linear-gradient(180deg, #d4a017, #8a6a0d);
+  color: #1a1206;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 8px 18px;
+  border: 1px solid #f0d060;
+  cursor: pointer;
+  transition: transform 0.1s, filter 0.15s;
+}
+.btn-royal:hover { filter: brightness(1.15); }
+.btn-royal:active { transform: scale(0.97); }
+.btn-royal:disabled { filter: grayscale(0.8); cursor: not-allowed; }
+
+.btn-stone {
+  background: linear-gradient(180deg, #4a3a26, #2b2115);
+  color: var(--sand);
+  border: 1px solid #6a5636;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.btn-stone:hover { border-color: var(--gold); }
+
+h1, h2, h3 { font-variant: small-caps; letter-spacing: 0.04em; }
+
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: #14100a; }
+::-webkit-scrollbar-thumb { background: #5a4526; border-radius: 6px; }
