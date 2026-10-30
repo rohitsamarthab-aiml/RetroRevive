@@ -104,4 +104,27 @@ describe("deterministic engine", () => {
     const b = new SeededRng(123);
     for (let i = 0; i < 100; i++) expect(a.next()).toBe(b.next());
   });
+
+  // REGRESSION (Keeper of Stores): starting timber must cover the founding
+  // preset builds (house 15 + farm 10 + granary 30 = 55). With timber 40 the
+  // granary placement silently failed; starting timber is now 60.
+  it("starting kingdom includes a completed granary (regression)", () => {
+    for (const seed of [5, 11, 23, 77]) {
+      const s = newGame(seed);
+      const g = s.buildings.find(b => b.type === "granary");
+      expect(g).toBeDefined();
+      expect(g!.underConstruction).toBe(false);
+    }
+    const s = newGame(5);
+    expect(s.resources.timber).toBeGreaterThanOrEqual(0);
+    expect(s.resources.gold).toBeGreaterThanOrEqual(0);
+  });
+
+  it("starting economy remains balanced after founding builds", () => {
+    const s = newGame(31);
+    // gold: 250 - palace(0) - house(40) - farm(30) - granary(60) = 120
+    expect(s.resources.gold).toBe(120);
+    // timber: 60 - 15 - 10 - 30 = 5
+    expect(s.resources.timber).toBe(5);
+  });
 });
