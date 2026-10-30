@@ -70,7 +70,6 @@ export function capacity(state: GameState): { housing: number; grain: number; de
 
 export function canAffordDecree(state: GameState, d: Decree): { ok: boolean; reason?: string } {
   const r = state.resources;
-  const landDelta = d.buyLand - d.sellLand;
   const landCost = d.buyLand * state.landForSalePrice;
   const soldiers = d.recruitSoldiers + d.trainSoldiers;
 
@@ -128,9 +127,15 @@ export function executeTurn(state: GameState, decree: Decree): ChronicleEntry[] 
   }
   state.militaryStrength = state.population.soldiers * 3 + capacity(state).defense;
 
+  // Buildings placed THIS turn start progressing from the NEXT turn,
+  // so a building with buildTurns = N takes exactly N full turns.
+  const startedThisTurn = new Set<string>();
   for (const b of decree.build) {
     const id = placeBuilding(state, b.type, b.x, b.z);
-    if (id) chron.push({ turn: state.turn, kind: "info", text: `Construction of ${BUILDINGS[b.type].name} begins at (${b.x}, ${b.z}).` });
+    if (id) {
+      startedThisTurn.add(id);
+      chron.push({ turn: state.turn, kind: "info", text: `Construction of ${BUILDINGS[b.type].name} begins at (${b.x}, ${b.z}).` });
+    }
   }
 
   rollWeather(state, rng);
@@ -191,7 +196,7 @@ export function executeTurn(state: GameState, decree: Decree): ChronicleEntry[] 
   }
 
   for (const b of state.buildings) {
-    if (b.underConstruction) {
+    if (b.underConstruction && !startedThisTurn.has(b.id)) {
       b.progress += Math.round(100 / BUILDINGS[b.type].buildTurns * (1 + state.population.builders * 0.02));
       if (b.progress >= 100) {
         b.underConstruction = false;
