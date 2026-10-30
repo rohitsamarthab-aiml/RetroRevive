@@ -3,18 +3,23 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Suspense } from "react";
-import { Terrain } from "./Terrain";
-import { Euphrates } from "./Euphrates";
+import { SeasonalGround } from "./SeasonalGround";
 import { Ziggurat } from "./buildings/Ziggurat";
 import { Palace } from "./buildings/Palace";
 import { BuildingMesh } from "./buildings/BuildingMesh";
 import { Villagers } from "./Villagers";
 import { SkyDome } from "./SkyDome";
 import { RainParticles } from "./RainParticles";
+import { EventEffects } from "./EventEffects";
 import { useGame } from "@/state/gameStore";
 import * as THREE from "three";
 
 const GOLD = "#d4a017";
+
+function BuildingsLayer() {
+  const buildings = useGame((s) => s.state.buildings);
+  return <>{buildings.map((b) => <BuildingMesh key={b.id} building={b} />)}</>;
+}
 
 function GroundTileHighlight() {
   const buildMode = useGame((s) => s.buildMode);
@@ -26,8 +31,7 @@ function GroundTileHighlight() {
       position={[0, 0.06, 0]}
       onClick={(e) => {
         e.stopPropagation();
-        const p = e.point;
-        placeAt(Math.round(p.x), Math.round(p.z));
+        placeAt(Math.round(e.point.x), Math.round(e.point.z));
       }}
     >
       <planeGeometry args={[60, 60]} />
@@ -38,13 +42,12 @@ function GroundTileHighlight() {
 
 export function GameCanvas() {
   const quality = useGame((s) => s.quality);
-  const state = useGame((s) => s.state);
   const shadows = quality !== "low";
 
   return (
     <Canvas
       shadows={shadows}
-      camera={{ position: [18, 20, 24], fov: 50 }}
+      camera={{ position: [22, 22, 26], fov: 50 }}
       gl={{ antialias: quality === "high" }}
       onCreated={({ gl, scene }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -64,21 +67,19 @@ export function GameCanvas() {
           shadow-camera-top={40}
           shadow-camera-bottom={-40}
         />
-        <Terrain />
-        <Euphrates />
+        <SeasonalGround />
         <Ziggurat position={[-8, 0, -10]} />
         <Palace position={[8, 0, -12]} />
-        {state.buildings.map((b) => (
-          <BuildingMesh key={b.id} building={b} />
-        ))}
+        <BuildingsLayer />
         <Villagers />
         <RainParticles />
+        <EventEffects />
         <GroundTileHighlight />
         <OrbitControls
           makeDefault
           maxPolarAngle={Math.PI / 2.15}
-          minDistance={8}
-          maxDistance={90}
+          minDistance={6}
+          maxDistance={100}
           enablePan
           panSpeed={0.8}
           target={[0, 0, 0]}
