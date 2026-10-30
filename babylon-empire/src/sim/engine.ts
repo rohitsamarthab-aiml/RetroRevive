@@ -11,7 +11,7 @@ export function newGame(seed = Date.now() % 2 ** 31): GameState {
   const state: GameState = {
     seed,
     turn: 0, year: 1, season: "spring",
-    resources: { grain: 1200, gold: 250, stone: 40, timber: 40, land: 20, landUsed: 4 },
+    resources: { grain: 1200, gold: 250, stone: 40, timber: 60, land: 20, landUsed: 4 },
     population: { total: 60, farmers: 40, builders: 5, merchants: 5, soldiers: 10, citizens: 40, idle: 0 },
     happiness: 60, health: 60, stability: 70, militaryStrength: 15,
     weather: { kind: "clear", intensity: 0, remainingTurns: 1 },
