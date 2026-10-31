@@ -1,3 +1,18 @@
 # RetroRevive UI Dependencies
-# Graphical Desktop Frontend (Pygame)
-pygame==2.6.1
+# Graphical Desktop Frontend
+#
+# NOTE (Python 3.14 migration, 2026-10):
+# The legacy `pygame` package (2.6.1, Sept 2024) ships binary wheels only up to
+# CPython 3.13. On Python 3.14 pip falls back to a source build that fails
+# without a compiler and SDL development headers. `pygame-ce` is the actively
+# maintained Community Edition fork by former pygame core developers; releases
+# from 2.5.6 onward ship wheels for CPython 3.14 (current: wheels up to 3.15).
+# pygame-ce still imports as `import pygame`, so no application code changes
+# are required.
+#
+# IMPORTANT: Never install both `pygame` and `pygame-ce` in the same virtual
+# environment - they install into the same `pygame/` directory and silently
+# overwrite each other. If pygame was previously installed, run:
+#   pip uninstall pygame
+# BEFORE installing pygame-ce, or use a fresh virtual environment.
+pygame-ce>=2.5.8
