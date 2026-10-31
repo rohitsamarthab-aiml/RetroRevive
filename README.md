@@ -1,7 +1,7 @@
 # RetroRevive — Classic Computer Games Platform
 
 **Confluence Buildathon 2026 — Track: Resurrections**  
-**Repository:** [https://github.com/rohanbuilds-ai/RetroRevive.git](https://github.com/rohanbuilds-ai/RetroRevive.git)
+**Repository:** https://github.com/rohitsamarthab-aiml/RetroRevive (branch: `feature/babylon-empire`)
 
 RetroRevive brings classic computer games from the 1970s into the modern era through polished desktop graphics, animation, responsive controls, interactive tutorials, and optional modern enhancements—while strictly preserving original gameplay in verified Classic Modes.
 
@@ -11,6 +11,42 @@ Built as an extensible platform, RetroRevive currently features:
 3. **23 Matches (`games/23_matches/`):** The timeless mathematical subtraction strategy game (Nim) by Bob Albrecht, featuring an animated wooden matchstick board, burning match effects, human-vs-computer play, and dual AI modes.
 4. **Coming Soon Index:** Metadata, provenance, and rules for upcoming classics: *Lunar Lander* (1973), *Super Star Trek* (1974), and *The Oregon Trail* (1971).
 5. **Standalone Terminal CLI Fallback (`main.py --cli`):** Zero-dependency pure standard library CLI for running both games in traditional text terminals.
+
+---
+
+## 0. Download & Run in 4 Steps (Windows, One-Click)
+
+1. **Download:** open https://github.com/rohitsamarthab-aiml/RetroRevive/archive/refs/heads/feature/babylon-empire.zip and extract the ZIP to any folder (e.g. `C:\RetroRevive`).
+2. **Python:** install Python 3.14.0 from https://www.python.org/downloads/ if not already installed (tick *"Add python.exe to PATH"* during install).
+3. **Double-click `setup.bat`** — creates the virtual environment and installs pygame-ce automatically. Run it once.
+4. **Double-click `RUN_RETROREVIVE.bat`** — the game library opens. Play.
+
+Both scripts print clear error messages and pause if something fails.
+
+### PowerShell equivalent
+
+```powershell
+# Download (clone) and switch to the correct branch
+git clone https://github.com/rohitsamarthab-aiml/RetroRevive.git
+cd RetroRevive
+git checkout feature/babylon-empire
+
+# Set up environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements-ui.txt
+
+# Verify pygame-ce (expect IS_CE = 1)
+python -c "import pygame; print(pygame.version.ver, getattr(pygame, 'IS_CE', 0))"
+
+# Run the automated test suite
+python -m unittest discover -v
+
+# Launch the game
+python main.py
+```
+
+Or simply run `.\setup.bat` then `.\RUN_RETROREVIVE.bat` instead of the manual steps.
 
 ---
 
@@ -27,7 +63,7 @@ Built as an extensible platform, RetroRevive currently features:
 Clone the repository and set up a fresh virtual environment:
 ```powershell
 # Clone repository
-git clone https://github.com/rohanbuilds-ai/RetroRevive.git
+git clone https://github.com/rohitsamarthab-aiml/RetroRevive.git
 cd RetroRevive
 
 # Create a FRESH virtual environment (do not reuse one that had pygame installed)
@@ -104,6 +140,8 @@ RetroRevive/
 ├── ui_pygame.py                # Hammurabi desktop game
 ├── game_logic.py               # Hammurabi 1978 pure Python engine
 ├── modern_game_logic.py        # Hammurabi enhanced logic & persistence
+├── setup.bat                   # One-click Windows setup (venv + pygame-ce)
+├── RUN_RETROREVIVE.bat         # One-click game launcher
 ├── games/
 │   └── 23_matches/
 │       ├── engine.py           # 23 Matches pure Python rule engine & AI
@@ -118,6 +156,7 @@ RetroRevive/
     ├── platform-architecture.md# Comprehensive architecture documentation
     ├── game-sources.md         # Historical provenance and licensing
     ├── python314-migration.md  # Python 3.14 + pygame-ce migration notes
+    ├── babylon-3d-plan.md      # Babylonian Kingdom 3D transformation plan
     └── screenshots/            # Verified screenshots across resolutions
 ```
 
@@ -134,11 +173,11 @@ See [`docs/platform-architecture.md`](docs/platform-architecture.md) for complet
 
 RetroRevive enforces rigorous test isolation across core domain engines, modern additions, UI state transitions, and platform navigation.
 
-### Run All 92 Automated Unit Tests
+### Run All Automated Unit Tests
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -v
 ```
-**Test Suite Breakdown (92 Tests Total):**
+**Test Suite Breakdown:**
 - `test_game.py`: **26 tests** (Historical formulas, land prices, harvest, rat infestation, safe prompt recovery, evaluation tiers).
 - `test_modern.py`: **7 tests** (Royal Advisors, Chronicle Log, Scenarios, JSON save/resume roundtrip).
 - `test_ui.py`: **27 tests** (Letterbox scaling, Decree Preview math, numeric steppers, text entry, keyboard navigation, modal focus).
@@ -149,7 +188,7 @@ RetroRevive enforces rigorous test isolation across core domain engines, modern 
 ```powershell
 .venv\Scripts\python.exe verify_ui.py
 ```
-Generates 12 verified screenshots in `docs/screenshots/` covering the platform library, game details modal, 23 Matches gameplay, 23 Matches victory, Hammurabi screens, and multi-resolution scaling ($1366\times768$ and $1920\times1080$).
+Generates verified screenshots in `docs/screenshots/` covering the platform library, game details modal, 23 Matches gameplay, 23 Matches victory, Hammurabi screens, and multi-resolution scaling.
 
 ---
 
