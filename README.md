@@ -17,18 +17,20 @@ Built as an extensible platform, RetroRevive currently features:
 ## 1. Quick Start Guide
 
 ### System Prerequisites
-- **Python 3.10+** (tested and verified on Python 3.13.7 64-bit on Windows)
+- **Python 3.14** (verified target; the standard-library game engines also run on Python 3.10+)
 - **Standard Library** for core simulation rules and CLI gameplay (zero external dependencies required)
-- **Pygame 2.6+** for the graphical desktop interface
+- **pygame-ce 2.5.8+** for the graphical desktop interface
+
+> **Why pygame-ce instead of pygame?** The legacy `pygame` package (2.6.1) ships binary wheels only up to CPython 3.13; on Python 3.14 installation fails with a source-build error. **pygame-ce** is the actively maintained Community Edition fork by former pygame core developers, ships wheels through Python 3.15, and still imports as `import pygame` — so no game code changes are needed. See `docs/python314-migration.md` for details.
 
 ### Installation
-Clone the repository and set up the virtual environment:
+Clone the repository and set up a fresh virtual environment:
 ```powershell
 # Clone repository
 git clone https://github.com/rohanbuilds-ai/RetroRevive.git
 cd RetroRevive
 
-# Create virtual environment
+# Create a FRESH virtual environment (do not reuse one that had pygame installed)
 python -m venv .venv
 
 # Activate on Windows (PowerShell):
@@ -36,9 +38,14 @@ python -m venv .venv
 # Or on Linux / macOS:
 # source .venv/bin/activate
 
-# Install Pygame for the desktop interface
+# Install pygame-ce for the desktop interface
 pip install -r requirements-ui.txt
+
+# Verify you got the Community Edition fork (expect: IS_CE = 1)
+python -c "import pygame; print(pygame.version.ver, getattr(pygame, 'IS_CE', 0))"
 ```
+
+> **Warning:** Never install both `pygame` and `pygame-ce` in the same virtual environment — they install into the same `pygame/` directory and silently overwrite each other. If pygame was previously installed, run `pip uninstall pygame` first (or use a fresh venv).
 
 ---
 
@@ -110,6 +117,7 @@ RetroRevive/
 └── docs/
     ├── platform-architecture.md# Comprehensive architecture documentation
     ├── game-sources.md         # Historical provenance and licensing
+    ├── python314-migration.md  # Python 3.14 + pygame-ce migration notes
     └── screenshots/            # Verified screenshots across resolutions
 ```
 
@@ -118,7 +126,7 @@ RetroRevive/
 2. Create `games/<game_id>/app.py` taking `shared_window` and `on_exit_to_library` callback.
 3. Register the game metadata in `game_registry.py`.
 
-See [`docs/platform-architecture.md`](file:///e:/GitHub%20Projects/RetroRevive/docs/platform-architecture.md) for complete technical documentation.
+See [`docs/platform-architecture.md`](docs/platform-architecture.md) for complete technical documentation.
 
 ---
 
@@ -175,4 +183,4 @@ Generates 12 verified screenshots in `docs/screenshots/` covering the platform l
 
 - **RetroRevive Implementation:** Copyright © 2026 RetroRevive Contributors. Released under the open-source MIT License.
 - **Game Concepts & Formulas:** Derived from educational public computer literature edited by David H. Ahl (*BASIC Computer Games*, 1978, Creative Computing Press) and Bob Albrecht (*People's Computer Company*, 1973).
-- **Zero External Assets:** All fonts, graphics, world elements, and 8-bit sound effects are procedurally rendered in real time using the Python standard library and Pygame.
+- **Zero External Assets:** All fonts, graphics, world elements, and 8-bit sound effects are procedurally rendered in real time using the Python standard library and pygame-ce.
